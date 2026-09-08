@@ -11,7 +11,7 @@ Strum all six strings at once and each one is measured separately. Play a single
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshot.jpg" alt="All-strings mode: headstock with per-string status" width="270">
+  <img src="doc/screenshot.jpg" alt="All-strings mode: headstock with per-string status" width="270">
 </p>
 
 <!--
