@@ -8,6 +8,26 @@ Strum all six strings at once and each one is measured separately. Play a single
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshot-tuner.png" alt="All-strings mode: headstock with per-string status" width="270">
+  <img src="docs/screenshot-chords.png" alt="Chord mode with recognised chord and shapes" width="270">
+  <img src="docs/screenshot-settings.png" alt="Settings sheet" width="270">
+</p>
+
+<!--
+  To capture these:
+  1. Serve the file locally:  python3 -m http.server 8000
+  2. Open http://localhost:8000/tonalis.html in Chrome
+  3. DevTools (F12) -> device toolbar (Ctrl+Shift+M) -> iPhone 14 Pro or 390x844
+  4. Enable Tools -> Demo signal -> Full strum so the display shows live readings
+  5. Ctrl+Shift+P -> "Capture screenshot"
+  Save as docs/screenshot-tuner.png, -chords.png, -settings.png
+-->
+
+---
+
 ## Features
 
 **Four modes**
