@@ -11,9 +11,7 @@ Strum all six strings at once and each one is measured separately. Play a single
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshot-tuner.png" alt="All-strings mode: headstock with per-string status" width="270">
-  <img src="docs/screenshot-chords.png" alt="Chord mode with recognised chord and shapes" width="270">
-  <img src="docs/screenshot-settings.png" alt="Settings sheet" width="270">
+  <img src="docs/screenshot.jpg" alt="All-strings mode: headstock with per-string status" width="270">
 </p>
 
 <!--
