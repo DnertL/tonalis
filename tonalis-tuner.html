@@ -1,0 +1,2979 @@
+<!DOCTYPE html>
+<!--
+  Tonalis — polyphonic tuner and chord recognition for guitar and bass
+  Version 0.3
+
+  Copyright (C) 2026  Daniel Ertl <dnertlgh@proton.me>
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+  SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#12100D">
+<meta name="color-scheme" content="dark">
+<meta name="author" content="Daniel Ertl">
+<meta name="description" content="Polyphonic tuner and chord recognition for guitar and bass — runs entirely offline in the browser.">
+<meta name="version" content="0.3">
+<link rel="license" href="https://www.gnu.org/licenses/gpl-3.0.html">
+<title>Tonalis — tuner for guitar and bass</title>
+<style>
+:root{
+  --bg:#12100D; --panel:#1B1712; --raised:#262019; --line:#332B22;
+  --ink:#F0E9DE; --muted:#9C9184; --dim:#6B6155;
+  --brass:#C9A227; --brass-dim:#8A6F1C;
+  --wood1:#B57C42; --wood2:#7A4A24; --wood3:#40230F; --wood4:#2A1608;
+  --rose1:#4A2C1B; --rose2:#2E1A10;
+  --steel1:#F2F5F9; --steel2:#A8B1BC; --steel3:#525A64;
+  --bone:#E8DFC8;
+  --ok:#43C98B; --near:#D8A93C; --off:#D2604F;
+  --shadow:0 18px 40px rgba(0,0,0,.55);
+  --r:14px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:
+    radial-gradient(120% 60% at 50% -10%, #221C15 0%, transparent 60%),
+    var(--bg);
+  color:var(--ink); font-family:var(--font);
+  font-size:16px; line-height:1.45;
+  overscroll-behavior-y:none;
+  -webkit-font-smoothing:antialiased;
+}
+button,select,input{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+
+.app{
+  max-width:480px; margin:0 auto; min-height:100%;
+  display:flex; flex-direction:column;
+  padding:max(8px,env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
+}
+
+/* ---------- Kopfzeile ---------- */
+header.top{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
+.icon-btn{
+  width:42px;height:42px;border-radius:12px;display:grid;place-items:center;
+  background:var(--panel);border:1px solid var(--line);color:var(--muted);
+  transition:color .15s,border-color .15s;
+}
+.icon-btn:active{background:var(--raised)}
+.icon-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tuning-btn{
+  flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;
+  padding:5px 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel);
+}
+.tuning-btn b{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tuning-btn span{font-size:11.5px;color:var(--muted)}
+
+/* ---------- Modusleiste ---------- */
+nav.modes{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:12px}
+nav.modes button{
+  flex:1;padding:8px 2px;border-radius:9px;font-size:12.5px;color:var(--muted);
+  font-weight:500;letter-spacing:-.01em;transition:background .18s,color .18s;
+}
+nav.modes button[aria-selected="true"]{background:var(--raised);color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+
+/* ---------- Bühne: Kopfplatte ---------- */
+.stage{position:relative;display:flex;justify-content:center;margin-bottom:6px}
+.stage svg{width:100%;max-width:330px;height:auto;max-height:40vh;display:block}
+.stage.lefty svg{transform:scaleX(-1)}
+.stage.lefty text{transform-box:fill-box;transform-origin:center;transform:scaleX(-1)}
+
+/* ---------- Anzeige ---------- */
+.readout{padding:4px 0 2px;text-align:center}
+.note-line{display:flex;align-items:baseline;justify-content:center;gap:8px;min-height:52px}
+.note-name{font-size:46px;font-weight:650;letter-spacing:-.03em;line-height:1;transition:color .2s}
+.note-oct{font-size:17px;color:var(--muted);font-weight:500}
+.note-sub{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-height:18px}
+.note-sub b{color:var(--ink);font-weight:600;font-family:var(--mono);font-size:12.5px}
+
+.strobe{
+  height:22px;margin:10px 0 2px;border-radius:6px;overflow:hidden;
+  border:1px solid var(--line);background:#0D0B09;opacity:.35;transition:opacity .3s;
+  background-image:repeating-linear-gradient(115deg,#3B342A 0 8px,transparent 8px 20px);
+  background-size:40px 100%;
+}
+.strobe.live{opacity:1}
+
+.gauge{margin-top:2px}
+.gauge svg{width:100%;max-width:360px;height:auto;display:block;margin:0 auto}
+.cents{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.01em;min-height:22px}
+
+/* ---------- Saitenliste ---------- */
+.strings{display:flex;flex-direction:column;gap:5px;margin:10px 0 4px}
+.srow{
+  display:grid;grid-template-columns:34px 44px 1fr 60px;align-items:center;gap:9px;
+  padding:7px 10px;border-radius:11px;background:var(--panel);border:1px solid var(--line);
+  transition:border-color .2s,background .2s,opacity .25s; opacity:.5;
+}
+.srow.on{opacity:1}
+.srow.tuned{border-color:rgba(67,201,139,.45);background:linear-gradient(90deg,rgba(67,201,139,.10),var(--panel) 60%)}
+.srow.sel{border-color:var(--brass-dim)}
+.s-num{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;text-align:center}
+.s-name{font-size:17px;font-weight:600;letter-spacing:-.02em}
+.s-name i{font-size:11px;font-style:normal;color:var(--muted);font-weight:500}
+.s-bar{position:relative;height:8px;border-radius:4px;background:#0E0C0A;border:1px solid #2A241C;overflow:hidden}
+.s-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--dim)}
+.s-bar .zone{position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);background:rgba(67,201,139,.20)}
+.s-bar .pin{position:absolute;top:-2px;bottom:-2px;width:3px;border-radius:2px;background:var(--muted);
+  left:50%;transition:left .1s linear,background .2s}
+.s-val{font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-family:var(--mono)}
+.s-val b{font-weight:600}
+.hint{font-size:11.5px;color:var(--dim);text-align:center;min-height:16px;margin-top:2px}
+
+/* ---------- Akkordansicht ---------- */
+.chordview{text-align:center;padding-top:4px}
+.chord-name{font-size:52px;font-weight:650;letter-spacing:-.035em;line-height:1.05;min-height:56px}
+.chord-name sup{font-size:.5em;font-weight:600;letter-spacing:0}
+.chord-sub{font-size:12.5px;color:var(--muted);min-height:18px}
+.chord-diagrams{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+.diagram{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 7px 6px}
+.diagram svg{display:block;width:96px;height:auto}
+.diagram figcaption{font-size:11px;color:var(--muted);text-align:center;margin-top:3px}
+.notes-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.chip{font-size:12px;padding:4px 9px;border-radius:20px;background:var(--raised);border:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums}
+.chip b{color:var(--ink);font-weight:600}
+
+canvas#spectrum{width:100%;height:74px;display:block;margin-top:8px;border-radius:10px;border:1px solid var(--line);background:#0D0B09}
+
+/* ---------- Fußzeile ---------- */
+footer.bottom{margin-top:auto;padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.mic-btn{
+  width:100%;padding:14px;border-radius:13px;font-size:15px;font-weight:600;letter-spacing:-.01em;
+  background:linear-gradient(180deg,#3B3125,#2B2319);border:1px solid #4A3D2C;color:var(--ink);
+  display:flex;align-items:center;justify-content:center;gap:9px;
+}
+.mic-btn.live{background:linear-gradient(180deg,#243A2E,#182A20);border-color:#2F5C45}
+.mic-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.meter{height:5px;border-radius:3px;background:#0E0C0A;border:1px solid var(--line);overflow:hidden}
+.meter i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--ok),var(--brass) 70%,var(--off));transition:width .08s linear}
+.status{font-size:11.5px;color:var(--dim);text-align:center;min-height:16px}
+
+/* ---------- Bottom Sheet ---------- */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);opacity:0;pointer-events:none;transition:opacity .25s;z-index:40}
+.scrim.open{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;max-height:88vh;
+  background:var(--panel);border-top:1px solid var(--line);
+  border-radius:20px 20px 0 0;box-shadow:var(--shadow);
+  transform:translateY(101%);transition:transform .3s cubic-bezier(.32,.72,0,1);
+  display:flex;flex-direction:column;
+  max-width:480px;margin:0 auto;
+}
+.sheet.open{transform:translateY(0)}
+.sheet-head{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.sheet-head h2{margin:0;font-size:16px;font-weight:600;letter-spacing:-.01em;flex:1}
+.sheet-body{overflow-y:auto;padding:12px 16px calc(22px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
+.grabber{width:36px;height:4px;border-radius:2px;background:var(--line);margin:8px auto 0}
+
+.group{margin-bottom:18px}
+.group > h3{font-size:12.5px;color:var(--brass);margin:0 0 8px;font-weight:600;letter-spacing:.01em}
+.field{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(51,43,34,.6)}
+.field:last-child{border-bottom:0}
+.field label{flex:1;font-size:13.5px;line-height:1.3}
+.field label small{display:block;color:var(--dim);font-size:11.5px;margin-top:1px}
+.field .val{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:52px;text-align:right;font-family:var(--mono)}
+.field input[type=range]{flex:0 0 132px;accent-color:var(--brass);background:transparent}
+.field select{
+  background:var(--raised);border:1px solid var(--line);border-radius:9px;padding:7px 9px;font-size:13px;max-width:172px;
+}
+.switch{position:relative;width:44px;height:26px;flex:none;border-radius:14px;background:var(--raised);border:1px solid var(--line);transition:background .2s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--dim);transition:transform .2s,background .2s}
+.switch[aria-checked="true"]{background:rgba(67,201,139,.22);border-color:rgba(67,201,139,.5)}
+.switch[aria-checked="true"]::after{transform:translateX(18px);background:var(--ok)}
+
+.list-btn{
+  width:100%;text-align:left;padding:11px 12px;border-radius:11px;background:var(--raised);
+  border:1px solid var(--line);margin-bottom:6px;display:flex;align-items:center;gap:10px;
+}
+.list-btn b{font-size:14px;font-weight:600;flex:1}
+.list-btn span{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+.list-btn.on{border-color:var(--brass-dim);background:linear-gradient(90deg,rgba(201,162,39,.12),var(--raised) 70%)}
+.seg{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.seg button{padding:6px 11px;border-radius:9px;background:var(--raised);border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.seg button.on{border-color:var(--brass-dim);color:var(--ink);background:rgba(201,162,39,.13)}
+.action{width:100%;padding:12px;border-radius:11px;background:var(--raised);border:1px solid var(--line);font-size:14px;font-weight:500;margin-top:6px}
+.note-box{font-size:12px;color:var(--muted);background:rgba(201,162,39,.07);border:1px solid rgba(201,162,39,.2);border-radius:10px;padding:10px 11px;line-height:1.5}
+.metro-beat{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.metro-beat i{width:11px;height:11px;border-radius:50%;background:var(--raised);border:1px solid var(--line);transition:background .06s,transform .06s}
+.metro-beat i.hit{background:var(--brass);transform:scale(1.35)}
+.metro-beat i.hit.one{background:var(--ok)}
+.big-num{font-size:34px;font-weight:650;text-align:center;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(94px,1fr));gap:9px}
+
+@media (prefers-reduced-motion: reduce){
+  *{transition-duration:.01ms !important;animation-duration:.01ms !important}
+}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px;border-radius:8px}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <button class="icon-btn" id="btnTools" aria-label="Tools and chord library">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    </button>
+    <button class="tuning-btn" id="btnTuning" aria-label="Choose instrument and tuning">
+      <b id="tuningName">Standard E</b><span id="instName">Gitarre · 6 Saiten</span>
+    </button>
+    <button class="icon-btn" id="btnSettings" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.5-2.6l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.3a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.7 1.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>
+    </button>
+  </header>
+
+  <nav class="modes" role="tablist" id="modes">
+    <button role="tab" data-mode="auto" aria-selected="true">Automatic</button>
+    <button role="tab" data-mode="poly" aria-selected="false">All strings</button>
+    <button role="tab" data-mode="single" aria-selected="false">Single string</button>
+    <button role="tab" data-mode="chord" aria-selected="false">Chords</button>
+  </nav>
+
+  <main>
+    <section class="stage" id="stage"><svg id="hs" viewBox="0 0 340 442" aria-label="Headstock"></svg></section>
+
+    <section class="readout" id="readout">
+      <div class="note-line">
+        <span class="note-name" id="rdNote">—</span><span class="note-oct" id="rdOct"></span>
+      </div>
+      <div class="note-sub" id="rdSub">Start the microphone or use the demo signal</div>
+      <div class="strobe" id="strobe"></div>
+      <div class="gauge"><svg id="gauge" viewBox="0 0 360 116" aria-hidden="true"></svg></div>
+      <div class="cents" id="rdCents"></div>
+    </section>
+
+    <section class="strings" id="strings"></section>
+    <p class="hint" id="hint"></p>
+
+    <section class="chordview" id="chordview" hidden>
+      <div class="chord-name" id="chName">—</div>
+      <div class="chord-sub" id="chSub">Play a chord</div>
+      <div class="chord-diagrams" id="chDiagrams"></div>
+      <div class="notes-row" id="chNotes"></div>
+    </section>
+
+    <canvas id="spectrum" width="900" height="150" hidden></canvas>
+  </main>
+
+  <footer class="bottom">
+    <button class="mic-btn" id="btnMic">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <span id="micLabel">Start microphone</span>
+    </button>
+    <div class="meter"><i id="levelBar"></i></div>
+    <p class="status" id="status">Ready. For best results avoid background noise.</p>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="grabber"></div>
+  <div class="sheet-head">
+    <h2 id="sheetTitle">Settings</h2>
+    <button class="icon-btn" id="sheetClose" aria-label="Close">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<script>
+/* =========================================================================
+   TONALIS – DSP core
+   Reine Signalverarbeitung + Musiktheorie. Keine DOM-Abhängigkeit,
+   damit der Kern in Node getestet werden kann.
+   ========================================================================= */
+var DSP = (function () {
+  'use strict';
+
+  /* ------------------------------------------------------------------ FFT */
+  function revBits(x, bits) {
+    var y = 0;
+    for (var i = 0; i < bits; i++) { y = (y << 1) | (x & 1); x >>>= 1; }
+    return y >>> 0;
+  }
+
+  function FFT(n) {
+    this.n = n;
+    this.levels = Math.round(Math.log(n) / Math.LN2);
+    if ((1 << this.levels) !== n) throw new Error('FFT: Größe muss 2^k sein');
+    this.cosT = new Float64Array(n / 2);
+    this.sinT = new Float64Array(n / 2);
+    for (var i = 0; i < n / 2; i++) {
+      this.cosT[i] = Math.cos(2 * Math.PI * i / n);
+      this.sinT[i] = Math.sin(2 * Math.PI * i / n);
+    }
+    this.rev = new Uint32Array(n);
+    for (var j = 0; j < n; j++) this.rev[j] = revBits(j, this.levels);
+  }
+
+  FFT.prototype.transform = function (re, im) {
+    var n = this.n, rev = this.rev, cosT = this.cosT, sinT = this.sinT, t;
+    for (var i = 0; i < n; i++) {
+      var j = rev[i];
+      if (j > i) {
+        t = re[i]; re[i] = re[j]; re[j] = t;
+        t = im[i]; im[i] = im[j]; im[j] = t;
+      }
+    }
+    for (var size = 2; size <= n; size *= 2) {
+      var half = size >> 1, step = n / size;
+      for (var a = 0; a < n; a += size) {
+        for (var b = a, k = 0; b < a + half; b++, k += step) {
+          var l = b + half;
+          var tre = re[l] * cosT[k] + im[l] * sinT[k];
+          var tim = -re[l] * sinT[k] + im[l] * cosT[k];
+          re[l] = re[b] - tre; im[l] = im[b] - tim;
+          re[b] += tre; im[b] += tim;
+        }
+      }
+    }
+  };
+
+  /* inverse (unskaliert) */
+  FFT.prototype.inverse = function (re, im) { this.transform(im, re); };
+
+  var fftCache = {};
+  function getFFT(n) { return fftCache[n] || (fftCache[n] = new FFT(n)); }
+
+  /* -------------------------------------------------------------- Fenster */
+  var winCache = {};
+  function getWindow(n, type) {
+    var key = n + ':' + type;
+    if (winCache[key]) return winCache[key];
+    var w = new Float64Array(n), i, x;
+    for (i = 0; i < n; i++) {
+      x = i / (n - 1);
+      switch (type) {
+        case 'hamming':
+          w[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * x); break;
+        case 'blackman-harris':
+          w[i] = 0.35875 - 0.48829 * Math.cos(2 * Math.PI * x)
+               + 0.14128 * Math.cos(4 * Math.PI * x)
+               - 0.01168 * Math.cos(6 * Math.PI * x); break;
+        case 'gauss':
+          var s = (i - (n - 1) / 2) / (0.35 * (n - 1) / 2);
+          w[i] = Math.exp(-0.5 * s * s); break;
+        default: /* hann */
+          w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * x);
+      }
+    }
+    var sum = 0;
+    for (i = 0; i < n; i++) sum += w[i];
+    w.gain = sum / 2;           // Normierung: Sinus mit Amplitude A -> Peak ≈ A
+    winCache[key] = w;
+    return w;
+  }
+
+  /* ------------------------------------------------------------- Spektrum */
+  /**
+   * buf: Float32Array (Zeitsignal, Länge N)
+   * pad: Zero-Padding-Faktor (1,2,4) -> feinere Interpolation der Peaks
+   */
+  function spectrum(buf, sr, opts) {
+    opts = opts || {};
+    var N = buf.length;
+    var pad = opts.pad || 2;
+    var M = N * pad;
+    var w = getWindow(N, opts.window || 'hann');
+    var f = getFFT(M);
+    var re = new Float64Array(M), im = new Float64Array(M);
+    var i, dc = 0;
+    for (i = 0; i < N; i++) dc += buf[i];
+    dc /= N;                                   // Gleichanteil entfernen
+    for (i = 0; i < N; i++) re[i] = (buf[i] - dc) * w[i];
+    f.transform(re, im);
+    var half = M >> 1;
+    var mag = new Float64Array(half);
+    var g = 1 / w.gain;
+    for (i = 0; i < half; i++) mag[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) * g;
+    return { mag: mag, sr: sr, M: M, N: N, df: sr / M, nyq: sr / 2 };
+  }
+
+  function rms(buf) {
+    var s = 0, dc = 0, i, n = buf.length;
+    for (i = 0; i < n; i++) dc += buf[i];
+    dc /= n;
+    for (i = 0; i < n; i++) { var v = buf[i] - dc; s += v * v; }
+    return Math.sqrt(s / n);
+  }
+
+  /* lineare Interpolation der Magnitude bei Frequenz f */
+  function magAt(spec, f) {
+    var x = f / spec.df;
+    if (x < 1 || x >= spec.mag.length - 1) return 0;
+    var k = Math.floor(x), t = x - k;
+    return spec.mag[k] * (1 - t) + spec.mag[k + 1] * t;
+  }
+
+  /* stärkste Magnitude in ±cents um f, inkl. Frequenz */
+  function peakNear(spec, f, cents) {
+    var lo = f * Math.pow(2, -cents / 1200), hi = f * Math.pow(2, cents / 1200);
+    var k0 = Math.max(1, Math.floor(lo / spec.df));
+    var k1 = Math.min(spec.mag.length - 2, Math.ceil(hi / spec.df));
+    var best = -1, bi = -1;
+    for (var k = k0; k <= k1; k++) if (spec.mag[k] > best) { best = spec.mag[k]; bi = k; }
+    if (bi < 1) return { freq: f, amp: 0 };
+    return refineBin(spec, bi);
+  }
+
+  /* parabolische Interpolation im log-Magnitudenbereich */
+  function refineBin(spec, k) {
+    var m = spec.mag;
+    var a = Math.log(m[k - 1] + 1e-12), b = Math.log(m[k] + 1e-12), c = Math.log(m[k + 1] + 1e-12);
+    var den = a - 2 * b + c;
+    var d = den === 0 ? 0 : 0.5 * (a - c) / den;
+    if (!isFinite(d) || d > 1 || d < -1) d = 0;
+    return { freq: (k + d) * spec.df, amp: Math.exp(b - 0.25 * (a - c) * d), bin: k };
+  }
+
+  function findPeaks(spec, fLo, fHi, minRel) {
+    var m = spec.mag, df = spec.df;
+    var k0 = Math.max(1, Math.floor(fLo / df));
+    var k1 = Math.min(m.length - 2, Math.ceil(fHi / df));
+    var local = 0, k;
+    for (k = k0; k <= k1; k++) if (m[k] > local) local = m[k];
+    var out = [];
+    var thr = local * (minRel === undefined ? 0.08 : minRel);
+    for (k = k0; k <= k1; k++) {
+      if (m[k] > m[k - 1] && m[k] >= m[k + 1] && m[k] > thr) out.push(refineBin(spec, k));
+    }
+    out.sort(function (x, y) { return y.amp - x.amp; });
+    return out;
+  }
+
+  /* Rauschteppich: Median der Magnituden im Nutzband */
+  function noiseFloor(spec, fLo, fHi) {
+    var k0 = Math.max(1, Math.floor(fLo / spec.df));
+    var k1 = Math.min(spec.mag.length - 1, Math.ceil(fHi / spec.df));
+    var n = k1 - k0;
+    if (n < 8) return 0;
+    var step = Math.max(1, Math.floor(n / 512));
+    var arr = [];
+    for (var k = k0; k <= k1; k += step) arr.push(spec.mag[k]);
+    arr.sort(function (a, b) { return a - b; });
+    return arr[Math.floor(arr.length * 0.5)];
+  }
+
+  /* ------------------------------------------------- harmonische Salienz */
+  function salience(spec, f0, H, decay, tolCents) {
+    var s = 0, w, h, p;
+    for (h = 1; h <= H; h++) {
+      var f = f0 * h;
+      if (f > spec.nyq * 0.92) break;
+      w = Math.pow(h, -(decay === undefined ? 0.85 : decay));
+      p = peakNear(spec, f, tolCents === undefined ? 28 : tolCents);
+      s += w * p.amp;
+    }
+    return s;
+  }
+
+  /**
+   * f0 präzisieren: Teiltöne 1..3 auswerten, gewichtet nach Amplitude*h.
+   * Höhere Teiltöne liefern feinere Frequenzauflösung (Fehler skaliert 1/h).
+   */
+  function refineF0(spec, fApprox, tolCents, maxH, inharmonic) {
+    var num = 0, den = 0, h, p, est, dev;
+    var xs = [], ys = [], ws = [];
+    maxH = maxH || 3;
+    tolCents = tolCents || 35;
+    for (h = 1; h <= maxH; h++) {
+      var f = fApprox * h;
+      if (f > spec.nyq * 0.92) break;
+      p = peakNear(spec, f, tolCents);
+      if (p.amp <= 0) continue;
+      est = p.freq / h;
+      dev = Math.abs(1200 * Math.log(est / fApprox) / Math.LN2);
+      if (dev > tolCents) continue;
+      var w = p.amp * h;
+      num += est * w; den += w;
+      xs.push(h * h); ys.push(est * est); ws.push(w);
+    }
+    var simple = den > 0 ? num / den : fApprox;
+
+    /* Steife Saiten: f_h = h·f0·√(1+B·h²)  ⇒  (f_h/h)² = f0² + f0²B·h²
+       Lineare Regression liefert f0 ohne Obertonverzerrung.            */
+    if (inharmonic && xs.length >= 3) {
+      var sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0, i;
+      for (i = 0; i < xs.length; i++) {
+        sw += ws[i]; sx += ws[i] * xs[i]; sy += ws[i] * ys[i];
+        sxx += ws[i] * xs[i] * xs[i]; sxy += ws[i] * xs[i] * ys[i];
+      }
+      var d2 = sw * sxx - sx * sx;
+      if (Math.abs(d2) > 1e-9) {
+        var intercept = (sy * sxx - sx * sxy) / d2;
+        var slope = (sw * sxy - sx * sy) / d2;
+        if (intercept > 0) {
+          var f0 = Math.sqrt(intercept);
+          var B = slope / intercept;
+          var okDev = Math.abs(1200 * Math.log(f0 / simple) / Math.LN2);
+          if (B >= -2e-5 && B < 1e-3 && okDev < 25) return f0;
+        }
+      }
+    }
+    return simple;
+  }
+
+  /* --------------------------------------------------------------- NSDF  */
+  /* McLeod Pitch Method – liefert f0 + Klarheit (0..1), robust monophon.  */
+  function nsdf(buf, sr, fMin, fMax) {
+    var N = buf.length;
+    var M = 1; while (M < 2 * N) M *= 2;
+    var f = getFFT(M);
+    var re = new Float64Array(M), im = new Float64Array(M);
+    var i, dc = 0;
+    for (i = 0; i < N; i++) dc += buf[i];
+    dc /= N;
+    var x = new Float64Array(N);
+    for (i = 0; i < N; i++) { x[i] = buf[i] - dc; re[i] = x[i]; }
+    f.transform(re, im);
+    for (i = 0; i < M; i++) {
+      var p = re[i] * re[i] + im[i] * im[i];
+      re[i] = p; im[i] = 0;
+    }
+    f.inverse(re, im);
+    var r = new Float64Array(N);
+    for (i = 0; i < N; i++) r[i] = re[i] / M;
+
+    var power = 0;
+    for (i = 0; i < N; i++) power += x[i] * x[i];
+    var m = new Float64Array(N);
+    m[0] = 2 * power;
+    for (i = 1; i < N; i++) m[i] = m[i - 1] - x[N - i] * x[N - i] - x[i - 1] * x[i - 1];
+
+    var nd = new Float64Array(N);
+    for (i = 0; i < N; i++) nd[i] = m[i] > 1e-12 ? 2 * r[i] / m[i] : 0;
+
+    var tauMin = Math.max(2, Math.floor(sr / fMax));
+    var tauMax = Math.min(N - 2, Math.ceil(sr / fMin));
+
+    /* Maxima zwischen positiven Nulldurchgängen sammeln */
+    var maxima = [], t = tauMin, curMax = -1, curIdx = -1, positive = false;
+    for (t = tauMin; t <= tauMax; t++) {
+      if (nd[t] > 0 && nd[t - 1] <= 0) { positive = true; curMax = -1; curIdx = -1; }
+      if (positive) {
+        if (nd[t] > curMax) { curMax = nd[t]; curIdx = t; }
+        if (nd[t] < 0) { positive = false; if (curIdx > 0) maxima.push(curIdx); }
+      }
+    }
+    if (positive && curIdx > 0) maxima.push(curIdx);
+    if (!maxima.length) return { freq: 0, clarity: 0 };
+
+    var best = 0;
+    for (i = 0; i < maxima.length; i++) if (nd[maxima[i]] > best) best = nd[maxima[i]];
+    var thr = best * 0.88;
+    var chosen = -1;
+    for (i = 0; i < maxima.length; i++) if (nd[maxima[i]] >= thr) { chosen = maxima[i]; break; }
+    if (chosen < 1) return { freq: 0, clarity: 0 };
+
+    var a = nd[chosen - 1], b = nd[chosen], c = nd[chosen + 1];
+    var den = a - 2 * b + c;
+    var d = den === 0 ? 0 : 0.5 * (a - c) / den;
+    if (!isFinite(d) || Math.abs(d) > 1) d = 0;
+    var tau = chosen + d;
+    return { freq: sr / tau, clarity: Math.max(0, Math.min(1, b - 0.25 * (a - c) * d)) };
+  }
+
+  /* ------------------------------------------------ Mehrsaiten-Erkennung */
+  /**
+   * targets: Array von Sollfrequenzen (tief -> hoch)
+   * opts: { captureCents, harmonics, decay, relThresh, absFloor,
+   *         harmonicReject, tolCents }
+   */
+  function detectStrings(spec, targets, opts) {
+    opts = opts || {};
+    var capture = opts.captureCents || 160;
+    var H = opts.harmonics || 6;
+    var decay = opts.decay === undefined ? 0.85 : decay0(opts.decay);
+    var tol = opts.tolCents || 12;
+    var salTol = opts.salTolCents || 14;
+    var res = [], i;
+
+    var nf = noiseFloor(spec, Math.min.apply(null, targets) * 0.6, spec.nyq * 0.8);
+
+    for (i = 0; i < targets.length; i++) {
+      var t = targets[i];
+      var lo = t * Math.pow(2, -capture / 1200), hi = t * Math.pow(2, capture / 1200);
+      var cands = findPeaks(spec, lo, hi, 0.05).slice(0, 4);
+      /* Kandidaten aus dem 2. Teilton ableiten (fehlender Grundton) */
+      var oct = findPeaks(spec, lo * 2, hi * 2, 0.05).slice(0, 3);
+      for (var q = 0; q < oct.length; q++) cands.push({ freq: oct[q].freq / 2, amp: oct[q].amp * 0.55, derived: true });
+
+      var best = null;
+      for (var c = 0; c < cands.length; c++) {
+        var s = salience(spec, cands[c].freq, H, decay, salTol);
+        if (!best || s > best.sal) best = { freq: cands[c].freq, amp: cands[c].amp, sal: s };
+      }
+      if (!best) best = { freq: t, amp: 0, sal: 0 };
+
+      var f0 = refineF0(spec, best.freq, tol, opts.refineH || 3, opts.inharmonic !== false);
+      var pk = peakNear(spec, f0, 20);
+      var ct = 1200 * Math.log(f0 / t) / Math.LN2;
+      res.push({
+        index: i, target: t, freq: f0, cents: ct,
+        amp: Math.max(best.amp, pk.amp), sal: best.sal,
+        conf: 0, present: false, harmonic: false, noise: nf,
+        outOfBand: Math.abs(ct) > capture
+      });
+    }
+
+    /* Präsenz */
+    var maxSal = 0;
+    for (i = 0; i < res.length; i++) maxSal = Math.max(maxSal, res[i].sal);
+    var absFloor = opts.absFloor === undefined ? 0.0018 : opts.absFloor;
+    var rel = opts.relThresh === undefined ? 0.14 : opts.relThresh;
+
+    for (i = 0; i < res.length; i++) {
+      var r = res[i];
+      var snr = r.amp / Math.max(nf, 1e-9);
+      r.snr = snr;
+      r.present = !r.outOfBand && r.amp > absFloor && snr > (opts.snrMin || 4.5) &&
+                  (maxSal <= 0 || r.sal > maxSal * rel);
+      r.conf = Math.max(0, Math.min(1, Math.min(snr / 25, r.sal / (maxSal || 1) * 2.2)));
+    }
+
+    /* Obertonabweisung.
+       Für jede präsente tiefe Saite wird die Teiltonhüllkurve a(h)=A·h^s aus
+       den Teiltönen geschätzt, die NICHT auf einer anderen Saite liegen.
+       Passt der Peak einer höheren Saite in diese Hüllkurve, stammt er
+       vermutlich von der tiefen Saite und nicht von einer eigenen Schwingung. */
+    if (opts.harmonicReject !== false) {
+      var rejectAt = opts.harmReject === undefined ? 1.25 : opts.harmReject;
+      var doubtAt = opts.harmDoubt === undefined ? 3.0 : opts.harmDoubt;
+      /* nach Frequenz sortiert, damit auch reentrante Stimmungen stimmen */
+      var order = res.map(function (r) { return r.index; }).sort(function (a, b) {
+        return targets[a] - targets[b];
+      });
+      for (var oj = 0; oj < order.length; oj++) {
+        var j = order[oj];
+        var lo2 = res[j];
+        if (!lo2.present || lo2.freq <= 0) continue;
+        var others = [];
+        for (i = 0; i < targets.length; i++) if (i !== j) others.push(targets[i]);
+        var env = harmonicEnvelope(spec, lo2.freq, others, 9);
+        for (var oi = oj + 1; oi < order.length; oi++) {
+          var hi2 = res[order[oi]];
+          if (!hi2.present || hi2.freq <= 0) continue;
+          var ratio = hi2.freq / lo2.freq;
+          var h = Math.round(ratio);
+          if (h < 2 || h > 10) continue;
+          var devC = Math.abs(1200 * Math.log(ratio / h) / Math.LN2);
+          if (devC > (opts.harmTolCents || 25)) continue;
+
+          /* lokale Erwartung aus den Nachbarteiltönen (robuster als ein
+             globaler Fit, weil Fremdenergie nur lokal wirkt) */
+          var below = peakNear(spec, lo2.freq * (h - 1), 18).amp;
+          var above = h < 9 ? peakNear(spec, lo2.freq * (h + 1), 18).amp : 0;
+          var expect;
+          if (below > 0 && above > 0) expect = Math.sqrt(below * above);
+          else if (env) expect = env(h);
+          else expect = lo2.amp * Math.pow(h, -1.2);
+
+          if (hi2.amp < expect * rejectAt) {
+            hi2.harmonic = true; hi2.present = false; hi2.conf = 0;
+          } else if (hi2.amp < expect * doubtAt) {
+            hi2.blended = true; hi2.conf = Math.min(hi2.conf, 0.45);
+          }
+        }
+      }
+    }
+    return res;
+  }
+  function decay0(v) { return v; }
+
+  /* Hüllkurve nur aus den eigenen Teiltönen, Ausreißer nach oben gekappt.
+     Fremdenergie hebt Teiltöne nur an, daher wird der untere Rand gefittet. */
+  function robustEnvelope(spec, f0, maxH) {
+    var xs = [], ys = [], h, i;
+    for (h = 1; h <= maxH; h++) {
+      var f = f0 * h;
+      if (f > spec.nyq * 0.9) break;
+      var a = peakNear(spec, f, 22).amp;
+      if (a <= 1e-9) continue;
+      xs.push(Math.log(h)); ys.push(Math.log(a));
+    }
+    if (xs.length < 2) return null;
+    function fit(idx) {
+      var n = idx.length, sx = 0, sy = 0, sxx = 0, sxy = 0, k;
+      for (k = 0; k < n; k++) { var j = idx[k]; sx += xs[j]; sy += ys[j]; sxx += xs[j] * xs[j]; sxy += xs[j] * ys[j]; }
+      var d = n * sxx - sx * sx;
+      if (Math.abs(d) < 1e-12) return null;
+      var sl = (n * sxy - sx * sy) / d;
+      return { s: sl, c: (sy - sl * sx) / n };
+    }
+    var all = xs.map(function (_, i2) { return i2; });
+    var f1 = fit(all);
+    if (!f1) return null;
+    var keep = all.filter(function (j) { return ys[j] - (f1.c + f1.s * xs[j]) < 0.45; });
+    var f2 = keep.length >= 2 ? (fit(keep) || f1) : f1;
+    var s2 = Math.max(-3.5, Math.min(0.3, f2.s));
+    return function (hh) { return Math.exp(f2.c + s2 * Math.log(hh)); };
+  }
+
+  /* Teiltonhüllkurve a(h) = A·h^s per Regression in log-log */
+  function harmonicEnvelope(spec, f0, excludeFreqs, maxH) {
+    var xs = [], ys = [], h, i;
+    for (h = 1; h <= maxH; h++) {
+      var f = f0 * h;
+      if (f > spec.nyq * 0.9) break;
+      var skip = false;
+      for (i = 0; i < excludeFreqs.length; i++) {
+        if (Math.abs(1200 * Math.log(f / excludeFreqs[i]) / Math.LN2) < 100) { skip = true; break; }
+      }
+      if (skip) continue;
+      var a = peakNear(spec, f, 30).amp;
+      if (a <= 1e-9) continue;
+      xs.push(Math.log(h)); ys.push(Math.log(a));
+    }
+    if (xs.length < 2) return null;
+    var n = xs.length, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i]; }
+    var d = n * sxx - sx * sx;
+    if (Math.abs(d) < 1e-12) return null;
+    var s = (n * sxy - sx * sy) / d;
+    var c = (sy - s * sx) / n;
+    if (s > 0.5) s = 0.5; if (s < -3.5) s = -3.5;
+    return function (hh) { return Math.exp(c + s * Math.log(hh)); };
+  }
+
+  /* ------------------------------------------------------- Notenerkennung */
+  /**
+   * Iterative Salienz-Extraktion auf Halbtonraster (für Akkorde).
+   * Liefert [{midi, freq, cents, amp}] absteigend nach Stärke.
+   */
+  function detectNotes(spec, opts) {
+    opts = opts || {};
+    var a4 = opts.a4 || 440;
+    var mLo = opts.midiLo === undefined ? 28 : opts.midiLo;   // E1
+    var mHi = opts.midiHi === undefined ? 84 : opts.midiHi;   // C6
+    var H = opts.harmonics || 8;
+    var decay = opts.decay === undefined ? 0.8 : opts.decay;
+    var maxNotes = opts.maxNotes || 5;
+    var tol = opts.tolCents || 30;
+    var subF = opts.subFactor === undefined ? 0.85 : opts.subFactor;
+    var subFloor = opts.subFloor === undefined ? 0.2 : opts.subFloor;
+
+    /* Arbeitskopie des Spektrums */
+    var work = { mag: Float64Array.from(spec.mag), sr: spec.sr, M: spec.M, N: spec.N, df: spec.df, nyq: spec.nyq };
+    var out = [], first = 0, used = {};
+    var fundMin = opts.fundMinRel === undefined ? 0.1 : opts.fundMinRel;
+
+    function f(m) { return a4 * Math.pow(2, (m - 69) / 12); }
+
+    for (var it = 0, tries = 0; out.length < maxNotes && tries < maxNotes * 3; tries++) {
+      var bestS = 0, bestM = -1, bestF = 0;
+      for (var m = mLo; m <= mHi; m++) {
+        if (used[m]) continue;
+        var base = f(m);
+        /* feine Suche ±40 ct */
+        for (var ct = -40; ct <= 40; ct += 10) {
+          var fc = base * Math.pow(2, ct / 1200);
+          var s = salience(work, fc, H, decay, tol);
+          if (s > bestS) { bestS = s; bestM = m; bestF = fc; }
+        }
+      }
+      if (bestM < 0) break;
+      used[bestM] = 1;
+      if (out.length === 0) first = bestS;
+      else if (bestS < first * (opts.noteThresh === undefined ? 0.3 : opts.noteThresh)) break;
+
+      var f0 = refineF0(work, bestF, tol, 3);
+      var amp = peakNear(spec, f0, 25).amp;
+
+      /* Oktav-Geister abweisen: eine echte Note hat Energie auf ihrem
+         Grundton, ein untergeschobener Oktavgeist praktisch nicht. */
+      var strongest = 0;
+      for (var hh = 1; hh <= H; hh++) {
+        var fhh = f0 * hh;
+        if (fhh > spec.nyq * 0.9) break;
+        strongest = Math.max(strongest, peakNear(spec, fhh, 25).amp);
+      }
+      if (strongest > 0 && amp < strongest * fundMin) continue;
+
+      it++;
+      out.push({
+        midi: bestM, freq: f0, amp: amp, sal: bestS,
+        cents: 1200 * Math.log(f0 / f(bestM)) / Math.LN2
+      });
+
+      /* Teiltöne subtrahieren statt löschen: liegt eine andere Note auf
+         demselben Teilton, bleibt ihr Überschuss erhalten. */
+      var env = robustEnvelope(work, f0, H + 4);
+      for (var h = 1; h <= H + 4; h++) {
+        var fh = f0 * h;
+        if (fh > work.nyq * 0.95) break;
+        var expect = (env ? env(h) : amp * Math.pow(h, -1.2)) * subF;
+        var lo = fh * Math.pow(2, -38 / 1200), hi = fh * Math.pow(2, 38 / 1200);
+        var k0 = Math.max(0, Math.floor(lo / work.df)), k1 = Math.min(work.mag.length - 1, Math.ceil(hi / work.df));
+        for (var k = k0; k <= k1; k++) {
+          work.mag[k] = Math.max(work.mag[k] - expect, work.mag[k] * subFloor);
+        }
+      }
+    }
+    return out;
+  }
+
+  /* -------------------------------------------------------- Chroma-Profil */
+  function chroma(spec, opts) {
+    opts = opts || {};
+    var a4 = opts.a4 || 440;
+    var v = new Float64Array(12);
+    var mLo = opts.midiLo || 28, mHi = opts.midiHi || 88;
+    for (var m = mLo; m <= mHi; m++) {
+      var fr = a4 * Math.pow(2, (m - 69) / 12);
+      v[m % 12] += peakNear(spec, fr, 32).amp;
+    }
+    var mx = 0; for (var i = 0; i < 12; i++) mx = Math.max(mx, v[i]);
+    if (mx > 0) for (i = 0; i < 12; i++) v[i] /= mx;
+    return v;
+  }
+
+  /* Tonhöhenklassen-Profil aus den extrahierten Noten (obertonbereinigt) */
+  function notesToChroma(notes, spec, opts) {
+    var v = new Float64Array(12), i;
+    for (i = 0; i < notes.length; i++) v[notes[i].midi % 12] += notes[i].sal;
+    var mx = 0;
+    for (i = 0; i < 12; i++) mx = Math.max(mx, v[i]);
+    if (mx > 0) for (i = 0; i < 12; i++) v[i] /= mx;
+    /* Jede sauber extrahierte Note gilt als vorhanden, auch wenn sie leise
+       ist – die Obertöne sind zu diesem Zeitpunkt bereits abgezogen. */
+    var floorV = opts && opts.floor !== undefined ? opts.floor : 0.55;
+    for (i = 0; i < notes.length; i++) {
+      var pc = notes[i].midi % 12;
+      v[pc] = Math.max(v[pc], floorV);
+    }
+    /* leichte Beimischung des spektralen Profils fängt schwache Töne auf */
+    if (spec && (opts && opts.mix !== 0)) {
+      var c = chroma(spec, opts || {});
+      var w = (opts && opts.mix) || 0.3;
+      for (i = 0; i < 12; i++) v[i] = Math.min(1, v[i] + w * c[i] * c[i]);
+    }
+    return v;
+  }
+
+  function bassOf(notes, minRel) {
+    var mx = 0, i;
+    for (i = 0; i < notes.length; i++) mx = Math.max(mx, notes[i].sal);
+    var best = -1, bm = 999;
+    for (i = 0; i < notes.length; i++) {
+      if (notes[i].sal < mx * (minRel === undefined ? 0.22 : minRel)) continue;
+      if (notes[i].midi < bm) { bm = notes[i].midi; best = notes[i].midi % 12; }
+    }
+    return best;
+  }
+
+  /* ==================================================== Musiktheorie ===== */
+  var NOTE_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  var NOTE_FLAT  = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+  /* Qualitäten: iv = Intervalle, pref = Häufigkeitsbonus, opt = weglassbar */
+  var QUALITIES = [
+    { id: 'maj',    name: '',        iv: [0, 4, 7],            pref: 14, opt: [] },
+    { id: 'min',    name: 'm',       iv: [0, 3, 7],            pref: 14, opt: [] },
+    { id: '7',      name: '7',       iv: [0, 4, 7, 10],        pref: 10, opt: [7] },
+    { id: 'm7',     name: 'm7',      iv: [0, 3, 7, 10],        pref: 10, opt: [7] },
+    { id: 'maj7',   name: 'maj7',    iv: [0, 4, 7, 11],        pref: 9,  opt: [7] },
+    { id: 'sus4',   name: 'sus4',    iv: [0, 5, 7],            pref: 7,  opt: [] },
+    { id: 'sus2',   name: 'sus2',    iv: [0, 2, 7],            pref: 7,  opt: [] },
+    { id: '5',      name: '5',       iv: [0, 7],               pref: 5,  opt: [] },
+    { id: '6',      name: '6',       iv: [0, 4, 7, 9],         pref: 6,  opt: [7] },
+    { id: 'm6',     name: 'm6',      iv: [0, 3, 7, 9],         pref: 5,  opt: [7] },
+    { id: 'dim',    name: 'dim',     iv: [0, 3, 6],            pref: 4,  opt: [] },
+    { id: 'dim7',   name: 'dim7',    iv: [0, 3, 6, 9],         pref: 3,  opt: [] },
+    { id: 'm7b5',   name: 'm7b5',    iv: [0, 3, 6, 10],        pref: 3,  opt: [] },
+    { id: 'aug',    name: 'aug',     iv: [0, 4, 8],            pref: 3,  opt: [] },
+    { id: 'add9',   name: 'add9',    iv: [0, 2, 4, 7],         pref: 5,  opt: [7] },
+    { id: 'madd9',  name: 'm(add9)', iv: [0, 2, 3, 7],         pref: 3,  opt: [7] },
+    { id: 'mmaj7',  name: 'm(maj7)', iv: [0, 3, 7, 11],        pref: 2,  opt: [7] },
+    { id: '7sus4',  name: '7sus4',   iv: [0, 5, 7, 10],        pref: 4,  opt: [] },
+    { id: '9',      name: '9',       iv: [0, 2, 4, 7, 10],     pref: 4,  opt: [7] },
+    { id: 'maj9',   name: 'maj9',    iv: [0, 2, 4, 7, 11],     pref: 3,  opt: [7] },
+    { id: 'm9',     name: 'm9',      iv: [0, 2, 3, 7, 10],     pref: 3,  opt: [7] },
+    { id: '69',     name: '6/9',     iv: [0, 2, 4, 7, 9],      pref: 2,  opt: [7] },
+    { id: '7b9',    name: '7b9',     iv: [0, 1, 4, 7, 10],     pref: 1,  opt: [7] },
+    { id: '7s9',    name: '7#9',     iv: [0, 3, 4, 7, 10],     pref: 1,  opt: [7] },
+    { id: '7s5',    name: '7#5',     iv: [0, 4, 8, 10],        pref: 1,  opt: [] },
+    { id: '7b5',    name: '7b5',     iv: [0, 4, 6, 10],        pref: 1,  opt: [] },
+    { id: '11',     name: '11',      iv: [0, 2, 5, 7, 10],     pref: 1,  opt: [7, 2] },
+    { id: '13',     name: '13',      iv: [0, 4, 7, 9, 10],     pref: 1,  opt: [7] }
+  ];
+
+  function noteName(pc, useFlat) { return (useFlat ? NOTE_FLAT : NOTE_SHARP)[((pc % 12) + 12) % 12]; }
+
+  /**
+   * Akkord aus Tonhöhenklassen bestimmen.
+   * pcsEnergy: Float64Array(12) 0..1 ; bassPc: tiefste erkannte Tonklasse
+   */
+  function identifyChord(pcsEnergy, bassPc, opts) {
+    opts = opts || {};
+    var thresh = opts.pcThresh === undefined ? 0.34 : opts.pcThresh;
+    var present = [], i;
+    for (i = 0; i < 12; i++) if (pcsEnergy[i] >= thresh) present.push(i);
+    if (present.length < 2) return null;
+
+    var best = null;
+    for (var root = 0; root < 12; root++) {
+      for (var qi = 0; qi < QUALITIES.length; qi++) {
+        var q = QUALITIES[qi];
+        var tpl = q.iv.map(function (v) { return (root + v) % 12; });
+        var missing = 0, energy = 0, m;
+        for (m = 0; m < tpl.length; m++) {
+          if (present.indexOf(tpl[m]) < 0) {
+            /* weglassbare Töne milder bestrafen */
+            missing += (q.opt.indexOf(q.iv[m]) >= 0) ? 0.45 : 1;
+          } else energy += pcsEnergy[tpl[m]];
+        }
+        var extra = 0;
+        for (m = 0; m < present.length; m++) if (tpl.indexOf(present[m]) < 0) extra += pcsEnergy[present[m]];
+
+        var score = 100 - missing * 42 - extra * 30 + q.pref + energy * 6;
+        if (present.indexOf(root) < 0) score -= 25;
+        if (bassPc === root) score += 14;
+        else if (tpl.indexOf(bassPc) >= 0) score += 2;
+        else score -= 6;
+        /* Länge: einfache Akkorde bevorzugen, wenn nichts fehlt */
+        score -= q.iv.length * 1.2;
+
+        if (!best || score > best.score) {
+          best = { root: root, quality: q, score: score, tones: tpl, missing: missing, extra: extra };
+        }
+      }
+    }
+    if (!best || best.score < 30) return null;
+    var flat = shouldUseFlat(best.root, best.quality.id);
+    best.name = noteName(best.root, flat) + best.quality.name;
+    if (bassPc !== best.root && bassPc >= 0) best.name += '/' + noteName(bassPc, flat);
+    best.bass = bassPc;
+    return best;
+  }
+
+  function shouldUseFlat(root, qid) {
+    /* gebräuchliche Schreibweisen */
+    var flatRoots = [1, 3, 6, 8, 10]; // Db Eb Gb Ab Bb
+    if (flatRoots.indexOf(root) < 0) return false;
+    if (root === 6) return false;            // F# statt Gb
+    if (root === 1 && qid === 'maj') return false; // C# ok
+    return true;
+  }
+
+  /* ------------------------------------------------- Griffbild-Generator */
+  /**
+   * Erzeugt spielbare Voicings für einen Akkord auf beliebiger Stimmung.
+   * tuningMidi: Array MIDI-Noten der Leersaiten (tief->hoch)
+   */
+  function generateShapes(rootPc, ivs, tuningMidi, cfg) {
+    cfg = cfg || {};
+    var maxFret = cfg.maxFret === undefined ? 12 : cfg.maxFret;
+    var span = cfg.span === undefined ? 4 : cfg.span;
+    var minStrings = cfg.minStrings || Math.min(4, tuningMidi.length);
+    var optional = cfg.optional || [];
+    var tones = ivs.map(function (v) { return (rootPc + v) % 12; });
+    var n = tuningMidi.length;
+    var results = [];
+    var pos = new Array(n);
+
+    function fretsOk() {
+      var fr = [], i;
+      for (i = 0; i < n; i++) if (pos[i] > 0) fr.push(pos[i]);
+      if (!fr.length) return true;
+      var mn = Math.min.apply(null, fr), mx = Math.max.apply(null, fr);
+      return (mx - mn) < span;
+    }
+
+    function evaluate() {
+      var sounding = [], i;
+      for (i = 0; i < n; i++) if (pos[i] >= 0) sounding.push(i);
+      if (sounding.length < minStrings) return;
+      /* keine stummen Saiten zwischen klingenden (nur außen erlaubt) */
+      var firstS = sounding[0], lastS = sounding[sounding.length - 1];
+      for (i = firstS; i <= lastS; i++) if (pos[i] < 0) return;
+      /* alle notwendigen Akkordtöne vorhanden? */
+      var got = {};
+      for (i = 0; i < n; i++) if (pos[i] >= 0) got[(tuningMidi[i] + pos[i]) % 12] = 1;
+      var omitted = 0;
+      for (i = 0; i < tones.length; i++) {
+        if (!got[tones[i]]) {
+          if (optional.indexOf(ivs[i]) >= 0 && omitted < 1) omitted++;
+          else return;
+        }
+      }
+      /* Basston = Grundton (Grundstellung bevorzugt) */
+      var bass = (tuningMidi[firstS] + pos[firstS]) % 12;
+      var inversion = bass !== rootPc;
+      if (inversion && !cfg.allowInversions) return;
+      /* Fingersatz grob prüfen */
+      var fr = [];
+      for (i = 0; i < n; i++) if (pos[i] > 0) fr.push(pos[i]);
+      var fingers;
+      if (!fr.length) fingers = 0;
+      else {
+        var mn = Math.min.apply(null, fr);
+        var barre = pos[firstS] === mn && fr.filter(function (f) { return f === mn; }).length > 1;
+        var uniq = {}; fr.forEach(function (f) { uniq[f] = (uniq[f] || 0) + 1; });
+        fingers = 0;
+        Object.keys(uniq).forEach(function (f) {
+          f = +f;
+          if (barre && f === mn) fingers += 1;
+          else fingers += uniq[f];
+        });
+      }
+      if (fingers > 4) return;
+
+      var frets = pos.slice();
+      var openCount = frets.filter(function (f) { return f === 0; }).length;
+      var lowest = fr.length ? Math.min.apply(null, fr) : 0;
+      var highest = fr.length ? Math.max.apply(null, fr) : 0;
+      var score = sounding.length * 3 + openCount * 5
+                - lowest * 2.5 - fingers * 3
+                - (inversion ? 10 : 0)
+                - (n - 1 - lastS) * 4          // hohe Saiten stumm = ungewöhnlich
+                - omitted * 4;
+      /* offene Saiten zusammen mit hoher Lage ist praktisch unüblich */
+      if (openCount > 0 && lowest > 4) score -= 14;
+      if (highest - lowest === 3 && fingers === 4) score -= 3;
+      results.push({
+        frets: frets, score: score, fingers: fingers, bass: bass,
+        inversion: inversion, lowest: lowest, omitted: omitted
+      });
+    }
+
+    (function dfs(i) {
+      if (results.length > 4000) return;
+      if (i === n) { evaluate(); return; }
+      var open = tuningMidi[i] % 12;
+      var options = [-1];                       // stumm
+      for (var f = 0; f <= maxFret; f++) {
+        if (tones.indexOf((open + f) % 12) >= 0) options.push(f);
+      }
+      for (var o = 0; o < options.length; o++) {
+        pos[i] = options[o];
+        if (fretsOk()) dfs(i + 1);
+      }
+      pos[i] = -1;
+    })(0);
+
+    results.sort(function (a, b) { return b.score - a.score; });
+    /* Duplikate entfernen */
+    var seen = {}, out = [];
+    for (var i = 0; i < results.length && out.length < (cfg.limit || 3); i++) {
+      var key = results[i].frets.join(',');
+      if (seen[key]) continue;
+      seen[key] = 1; out.push(results[i]);
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------ Frame-Gesamtanalyse */
+  /**
+   * Entscheidet zwischen Einzelton und Mehrklang über die NSDF-Klarheit –
+   * ein von der Obertonlogik unabhängiges Kriterium.
+   */
+  function analyzeFrame(buf, sr, targets, opts) {
+    opts = opts || {};
+    var level = rms(buf);
+    var spec = spectrum(buf, sr, { pad: opts.pad || 2, window: opts.window || 'hann' });
+    var lowest = Math.min.apply(null, targets), highest = Math.max.apply(null, targets);
+    var mono = { freq: 0, clarity: 0 };
+    var gate = opts.gate === undefined ? 0.004 : opts.gate;
+    if (level > gate) {
+      /* NSDF braucht kein volles Analysefenster – das spart deutlich Zeit */
+      var nb = buf;
+      var want = opts.nsdfLen || 8192;
+      if (buf.length > want) nb = buf.subarray(buf.length - want);
+      mono = nsdf(nb, sr, lowest * 0.5, highest * 2.4);
+    }
+
+    var strings = detectStrings(spec, targets, opts);
+    var active = 0, i;
+    for (i = 0; i < strings.length; i++) if (strings[i].present) active++;
+
+    var monoClarity = opts.monoClarity === undefined ? 0.9 : opts.monoClarity;
+    var isMono = level > gate && mono.freq > 0 && mono.clarity >= monoClarity;
+    var monoInfo = null;
+
+    if (isMono) {
+      var f0 = refineF0(spec, mono.freq, 30, opts.refineH || 3, opts.inharmonic !== false);
+      if (Math.abs(1200 * Math.log(f0 / mono.freq) / Math.LN2) > 45) f0 = mono.freq;
+      var bestI = -1, bestC = 1e9, c;
+      for (i = 0; i < targets.length; i++) {
+        c = Math.abs(1200 * Math.log(f0 / targets[i]) / Math.LN2);
+        if (c < bestC) { bestC = c; bestI = i; }
+      }
+      monoInfo = { freq: f0, clarity: mono.clarity, string: -1, cents: 0 };
+      if (bestC <= (opts.captureCents || 160)) {
+        monoInfo.string = bestI;
+        monoInfo.cents = 1200 * Math.log(f0 / targets[bestI]) / Math.LN2;
+      }
+    }
+    return {
+      level: level, spec: spec, mono: mono, monoInfo: monoInfo,
+      strings: strings, active: active, isMono: isMono
+    };
+  }
+
+  return {
+    analyzeFrame: analyzeFrame,
+    FFT: FFT, getFFT: getFFT, getWindow: getWindow,
+    spectrum: spectrum, rms: rms, magAt: magAt, peakNear: peakNear,
+    findPeaks: findPeaks, refineBin: refineBin, noiseFloor: noiseFloor,
+    salience: salience, refineF0: refineF0, nsdf: nsdf,
+    detectStrings: detectStrings, detectNotes: detectNotes, chroma: chroma,
+    identifyChord: identifyChord, generateShapes: generateShapes,
+    notesToChroma: notesToChroma, bassOf: bassOf, robustEnvelope: robustEnvelope,
+    QUALITIES: QUALITIES, noteName: noteName, NOTE_SHARP: NOTE_SHARP, NOTE_FLAT: NOTE_FLAT
+  };
+})();
+
+if (typeof module !== 'undefined' && module.exports) module.exports = DSP;
+
+</script>
+<script>
+/* =========================================================================
+   TONALIS — Anwendungsschicht
+   ========================================================================= */
+(function () {
+'use strict';
+
+var $ = function (s, r) { return (r || document).querySelector(s); };
+var svgNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent) {
+  var n = document.createElementNS(svgNS, tag);
+  for (var k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function h(tag, cls, txt) {
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (txt !== undefined) n.textContent = txt;
+  return n;
+}
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+
+/* ------------------------------------------------------- Speicher (weich) */
+var mem = {};
+var store = {
+  get: function (k) {
+    try { var v = window.localStorage.getItem(k); return v === null ? mem[k] : v; }
+    catch (e) { return mem[k]; }
+  },
+  set: function (k, v) {
+    mem[k] = v;
+    try { window.localStorage.setItem(k, v); } catch (e) { /* privater Modus */ }
+  }
+};
+
+/* ------------------------------------------------------- Version / Autor */
+var VERSION = '0.3';
+var AUTHOR = 'Daniel Ertl';
+var AUTHOR_MAIL = 'dnertlgh@proton.me';
+var LICENSE = 'GNU General Public License v3.0 or later';
+
+/* ------------------------------------------------------------ Instrumente */
+var INSTRUMENTS = {
+  guitar:  { key: 'inst.guitar',  strings: 6 },
+  bass:    { key: 'inst.bass',    strings: 4 },
+  ukulele: { key: 'inst.ukulele', strings: 4 },
+  banjo:   { key: 'inst.banjo',   strings: 5 },
+  mandolin:{ key: 'inst.mandolin',strings: 4 }
+};
+
+/* MIDI-Noten der Leersaiten, tief nach hoch (physikalische Reihenfolge).
+   name = englisch, de = abweichende deutsche Bezeichnung.               */
+var TUNINGS = {
+  guitar: [
+    { id: 'std',    name: 'Standard E',            midi: [40, 45, 50, 55, 59, 64] },
+    { id: 'dropd',  name: 'Drop D',                midi: [38, 45, 50, 55, 59, 64] },
+    { id: 'ddropd', name: 'Double Drop D',         midi: [38, 45, 50, 55, 59, 62] },
+    { id: 'eb',     name: 'Eb — half step down',   de: 'Eb — Halbton tiefer', midi: [39, 44, 49, 54, 58, 63] },
+    { id: 'dstd',   name: 'D — whole step down',   de: 'D — Ganzton tiefer',  midi: [38, 43, 48, 53, 57, 62] },
+    { id: 'dropcs', name: 'Drop C#',               midi: [37, 44, 49, 54, 58, 63] },
+    { id: 'dropc',  name: 'Drop C',                midi: [36, 43, 48, 53, 57, 62] },
+    { id: 'dropb',  name: 'Drop B',                midi: [35, 42, 47, 52, 56, 61] },
+    { id: 'dropa',  name: 'Drop A',                midi: [33, 40, 45, 50, 54, 59] },
+    { id: 'dadgad', name: 'DADGAD',                midi: [38, 45, 50, 55, 57, 62] },
+    { id: 'opend',  name: 'Open D',                midi: [38, 45, 50, 54, 57, 62] },
+    { id: 'opene',  name: 'Open E',                midi: [40, 47, 52, 56, 59, 64] },
+    { id: 'openg',  name: 'Open G',                midi: [38, 43, 50, 55, 59, 62] },
+    { id: 'opena',  name: 'Open A',                midi: [40, 45, 52, 57, 61, 64] },
+    { id: 'openc',  name: 'Open C',                midi: [36, 43, 48, 55, 60, 64] },
+    { id: 'openam', name: 'Open Am',               midi: [40, 45, 52, 57, 60, 64] },
+    { id: 'opendm', name: 'Open Dm',               midi: [38, 45, 50, 53, 57, 62] },
+    { id: 'nst',    name: 'New Standard (CGDAE)',  midi: [36, 43, 50, 57, 64, 67] },
+    { id: 'g7',     name: '7-string — B standard', de: '7 Saiten — B Standard', midi: [35, 40, 45, 50, 55, 59, 64] },
+    { id: 'g7drop', name: '7-string — Drop A',     de: '7 Saiten — Drop A',     midi: [33, 40, 45, 50, 55, 59, 64] },
+    { id: 'g8',     name: '8-string — F# standard',de: '8 Saiten — F# Standard',midi: [30, 35, 40, 45, 50, 55, 59, 64] }
+  ],
+  bass: [
+    { id: 'std',   name: 'Standard EADG',        midi: [28, 33, 38, 43] },
+    { id: 'dropd', name: 'Drop D',               midi: [26, 33, 38, 43] },
+    { id: 'eb',    name: 'Eb — half step down',  de: 'Eb — Halbton tiefer', midi: [27, 32, 37, 42] },
+    { id: 'd',     name: 'D — whole step down',  de: 'D — Ganzton tiefer',  midi: [26, 31, 36, 41] },
+    { id: 'dropc', name: 'Drop C',               midi: [24, 31, 36, 41] },
+    { id: 'b5',    name: '5-string — BEADG',     de: '5 Saiten — BEADG', midi: [23, 28, 33, 38, 43] },
+    { id: 'c5',    name: '5-string — EADGC',     de: '5 Saiten — EADGC', midi: [28, 33, 38, 43, 48] },
+    { id: 'b6',    name: '6-string — BEADGC',    de: '6 Saiten — BEADGC', midi: [23, 28, 33, 38, 43, 48] }
+  ],
+  ukulele: [
+    { id: 'std',  name: 'Soprano/Concert (high G)', de: 'Sopran/Konzert (hohes G)', midi: [67, 60, 64, 69] },
+    { id: 'lowg', name: 'Low G',                    de: 'Tiefes G',                 midi: [55, 60, 64, 69] },
+    { id: 'bari', name: 'Baritone DGBE',            de: 'Bariton DGBE',             midi: [50, 55, 59, 64] },
+    { id: 'd',    name: 'D tuning ADF#B',           de: 'D-Stimmung ADF#B',         midi: [69, 62, 66, 71] }
+  ],
+  banjo: [
+    { id: 'openg',   name: 'Open G (gDGBD)',   midi: [67, 50, 55, 59, 62] },
+    { id: 'doublec', name: 'Double C (gCGCD)', midi: [67, 48, 55, 60, 62] },
+    { id: 'dtune',   name: 'D tuning (aDF#AD)', de: 'D-Stimmung (aDF#AD)', midi: [69, 50, 54, 57, 62] }
+  ],
+  mandolin: [
+    { id: 'std', name: 'Standard GDAE', midi: [55, 62, 69, 76] }
+  ]
+};
+
+var NOTES_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+var NOTES_FLAT  = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+/* ============================================================ Sprachen == */
+var LANG = {
+  en: {
+    'app.title': 'Tonalis — tuner for guitar and bass',
+    'ui.tools': 'Tools and chord library',
+    'ui.tuningSel': 'Choose instrument and tuning',
+    'ui.settings': 'Settings',
+    'ui.close': 'Close',
+    'ui.headstock': 'Headstock',
+    'mode.auto': 'Automatic', 'mode.poly': 'All strings',
+    'mode.single': 'Single string', 'mode.chord': 'Chords',
+    'foot.micStart': 'Start microphone',
+    'foot.micRunning': 'Microphone on — tap to stop',
+    'foot.ready': 'Ready. For best results avoid background noise.',
+    'rd.play': 'Play a string',
+    'rd.idle': 'Start the microphone or use the demo signal',
+    'rd.target': 'target',
+    'rd.tuned': 'in tune',
+    'rd.raise': 'tune up',
+    'rd.lower': 'tune down',
+    'rd.blended': 'overlaid by a harmonic',
+    'rd.cent': 'cents',
+    'chrom.hint': 'chromatic, not a string of this tuning',
+    'chrom.to': 'cents from',
+    'chord.prompt': 'Play a chord',
+    'chord.bass': 'bass',
+    'chord.likely': 'most likely shape',
+    'chord.alt': 'alternative',
+    'hint.singleSet': 'String {n} locked — tap again to release',
+    'hint.singleTap': 'Tap a string for its reference tone and to lock it',
+    'hint.poly': 'Strum all strings — each one is judged separately',
+    'hint.autoMono': 'Single note detected',
+    'hint.autoMulti': 'Several strings detected',
+    'hint.autoIdle': 'Automatic: play one string or strum them all',
+    'sheet.tuning': 'Instrument and tuning',
+    'sheet.settings': 'Settings',
+    'sheet.tools': 'Tools',
+    'sheet.library': 'Chord library',
+    'tun.tunings': 'Tunings',
+    'tun.transposition': 'Transposition',
+    'tun.capo': 'Capo / transposition',
+    'tun.capoSub': 'shifts every target note',
+    'tun.a4': 'Concert pitch A',
+    'tun.a4sub': 'reference for all calculations',
+    'tun.a4std': 'standard 440 Hz',
+    'set.g1': 'Tuning and display',
+    'set.tolerance': 'Tolerance',
+    'set.toleranceSub': 'when a string counts as in tune',
+    'set.language': 'Language',
+    'set.languageSub': 'interface language',
+    'set.notation': 'Note names',
+    'set.notationSub': 'H/B follows German usage',
+    'set.notIntl': 'International (A–G, B)',
+    'set.notDe': 'German (H instead of B)',
+    'set.lefty': 'Left-handed view',
+    'set.leftySub': 'mirrors the headstock',
+    'set.smooth': 'Display smoothing',
+    'set.smoothSub': 'calm needle vs. fast response',
+    'set.hold': 'Hold time',
+    'set.holdSub': 'how long a reading stays on screen',
+    'set.g2': 'Detection algorithm',
+    'set.fft': 'Analysis window',
+    'set.fftSub': 'longer = more precise, shorter = faster',
+    'set.fft1': '4096 — very fast', 'set.fft2': '8192 — fast',
+    'set.fft3': '16384 — recommended', 'set.fft4': '32768 — highest resolution',
+    'set.win': 'Window function',
+    'set.winSub': 'Hann is the best compromise',
+    'set.rate': 'Measurements per second',
+    'set.rateSub': 'higher costs more computing time',
+    'set.capture': 'Capture range',
+    'set.captureSub': 'how far a string may be out of tune',
+    'set.harm': 'Harmonics evaluated',
+    'set.harmSub': 'more helps when the fundamental is weak',
+    'set.tolC': 'Harmonic tolerance',
+    'set.tolCSub': 'search window per harmonic — narrow is more precise',
+    'set.reject': 'Harmonic rejection',
+    'set.rejectSub': 'suppresses ghost strings',
+    'set.rej0': 'off', 'set.rej1': 'mild', 'set.rej2': 'normal',
+    'set.rej3': 'strict', 'set.rej4': 'very strict',
+    'set.inharm': 'Inharmonicity correction',
+    'set.inharmSub': 'compensates for the stiffness of thick strings',
+    'set.mono': 'Single-note threshold',
+    'set.monoSub': 'clarity required to switch to single-string mode',
+    'set.gate': 'Noise gate',
+    'set.gateSub': 'ignores quiet disturbances',
+    'set.snr': 'Minimum signal-to-noise',
+    'set.snrSub': 'peak against the noise floor',
+    'set.rel': 'Minimum string level',
+    'set.relSub': 'share of the loudest string',
+    'set.g3': 'Feedback',
+    'set.haptics': 'Vibrate when in tune',
+    'set.chime': 'Confirmation sound',
+    'set.chimeSub': 'short tone when a string is right',
+    'set.ref': 'Reference tone',
+    'set.refSub': 'volume when tapping a string',
+    'set.spec': 'Show spectrum',
+    'set.specSub': 'displays the live frequency picture',
+    'set.g4': 'Input',
+    'set.raw': 'Use raw signal',
+    'set.rawSub': 'disables echo and noise suppression — important for tuners',
+    'set.mic': 'Microphone',
+    'set.micDefault': 'Default device',
+    'set.reset': 'Reset all settings',
+    'set.privacy': 'All analysis runs on your device. No audio is transmitted.',
+    'set.about': 'About',
+    'about.version': 'Version',
+    'about.author': 'Author',
+    'about.license': 'License',
+    'about.licenseNote': 'Free software: you may use, modify and redistribute it under the terms of the GPL, version 3 or later. It comes with no warranty.',
+    'tools.demo': 'Demo signal',
+    'tools.demoNote': 'Generates a detuned guitar signal internally. Lets you try the detection without a microphone — handy when the browser denies microphone access.',
+    'tools.strum': 'Full strum', 'tools.seq': 'Strings one by one', 'tools.off': 'Off',
+    'tools.metro': 'Metronome',
+    'tools.tempo': 'Tempo',
+    'tools.meter': 'Time signature',
+    'tools.meterNone': 'no accent',
+    'tools.start': 'Start metronome', 'tools.stop': 'Stop metronome',
+    'tools.tap': 'Tap tempo',
+    'tools.chords': 'Chords',
+    'tools.lib': 'Chord library for this tuning',
+    'lib.info': 'Shapes are computed for the current tuning: ',
+    'st.listening': 'Listening … {sr} Hz · window {n} ({ms} ms)',
+    'st.stopped': 'Stopped.',
+    'st.demo': 'Demo signal running ({kind}), detuning random within ±32 cents.',
+    'st.demoEnd': 'Demo stopped.',
+    'st.noMic': 'This browser does not expose microphone access. Use the demo signal under Tools.',
+    'st.https': 'The microphone needs HTTPS or localhost. Over file:// please use the demo signal.',
+    'st.file': 'Files opened directly often may not access the microphone — then use Tools ▸ Demo signal.',
+    'st.err': 'No microphone access: {e}. The demo signal still works.',
+    'st.analysis': 'Analysis error: ',
+    'inst.guitar': 'Guitar', 'inst.bass': 'Bass', 'inst.ukulele': 'Ukulele',
+    'inst.banjo': 'Banjo', 'inst.mandolin': 'Mandolin',
+    'unit.strings': 'strings', 'unit.st': 'st'
+  },
+  de: {
+    'app.title': 'Tonalis — Stimmgerät für Gitarre und Bass',
+    'ui.tools': 'Werkzeuge und Akkordbibliothek',
+    'ui.tuningSel': 'Instrument und Stimmung wählen',
+    'ui.settings': 'Einstellungen',
+    'ui.close': 'Schließen',
+    'ui.headstock': 'Kopfplatte',
+    'mode.auto': 'Automatik', 'mode.poly': 'Alle Saiten',
+    'mode.single': 'Einzelsaite', 'mode.chord': 'Akkorde',
+    'foot.micStart': 'Mikrofon starten',
+    'foot.micRunning': 'Mikrofon läuft — tippen zum Stoppen',
+    'foot.ready': 'Bereit. Für beste Ergebnisse Störgeräusche vermeiden.',
+    'rd.play': 'Spiel eine Saite an',
+    'rd.idle': 'Mikrofon starten oder Demo-Signal verwenden',
+    'rd.target': 'Ziel',
+    'rd.tuned': 'gestimmt',
+    'rd.raise': 'höher stimmen',
+    'rd.lower': 'tiefer stimmen',
+    'rd.blended': 'von Oberton überlagert',
+    'rd.cent': 'Cent',
+    'chrom.hint': 'chromatisch, keine Saite der Stimmung',
+    'chrom.to': 'Cent zu',
+    'chord.prompt': 'Schlag einen Akkord an',
+    'chord.bass': 'Bass',
+    'chord.likely': 'wahrscheinlichster Griff',
+    'chord.alt': 'Alternative',
+    'hint.singleSet': 'Saite {n} festgelegt — nochmal tippen zum Lösen',
+    'hint.singleTap': 'Saite antippen: Referenzton und feste Zuordnung',
+    'hint.poly': 'Alle Saiten anschlagen — jede wird einzeln bewertet',
+    'hint.autoMono': 'Einzelton erkannt',
+    'hint.autoMulti': 'Mehrere Saiten erkannt',
+    'hint.autoIdle': 'Automatik: einzeln oder alle Saiten anschlagen',
+    'sheet.tuning': 'Instrument und Stimmung',
+    'sheet.settings': 'Einstellungen',
+    'sheet.tools': 'Werkzeuge',
+    'sheet.library': 'Akkordbibliothek',
+    'tun.tunings': 'Stimmungen',
+    'tun.transposition': 'Transposition',
+    'tun.capo': 'Kapodaster / Transposition',
+    'tun.capoSub': 'verschiebt alle Zielnoten',
+    'tun.a4': 'Kammerton A',
+    'tun.a4sub': 'Referenz für alle Berechnungen',
+    'tun.a4std': 'Standard 440 Hz',
+    'set.g1': 'Stimmung und Anzeige',
+    'set.tolerance': 'Toleranz',
+    'set.toleranceSub': 'ab wann eine Saite als gestimmt gilt',
+    'set.language': 'Sprache',
+    'set.languageSub': 'Sprache der Oberfläche',
+    'set.notation': 'Notation',
+    'set.notationSub': 'H/B nach deutscher Lesart',
+    'set.notIntl': 'International (A–G, B)',
+    'set.notDe': 'Deutsch (H statt B)',
+    'set.lefty': 'Linkshänder-Ansicht',
+    'set.leftySub': 'spiegelt die Kopfplatte',
+    'set.smooth': 'Anzeigeglättung',
+    'set.smoothSub': 'ruhiger Zeiger vs. schnelle Reaktion',
+    'set.hold': 'Haltezeit',
+    'set.holdSub': 'wie lange ein Messwert stehen bleibt',
+    'set.g2': 'Erkennungsalgorithmus',
+    'set.fft': 'Analysefenster',
+    'set.fftSub': 'länger = genauer, kürzer = schneller',
+    'set.fft1': '4096 — sehr schnell', 'set.fft2': '8192 — schnell',
+    'set.fft3': '16384 — empfohlen', 'set.fft4': '32768 — höchste Auflösung',
+    'set.win': 'Fensterfunktion',
+    'set.winSub': 'Hann ist der beste Kompromiss',
+    'set.rate': 'Messungen je Sekunde',
+    'set.rateSub': 'höher kostet Rechenzeit',
+    'set.capture': 'Fangbereich',
+    'set.captureSub': 'wie weit eine Saite verstimmt sein darf',
+    'set.harm': 'Ausgewertete Teiltöne',
+    'set.harmSub': 'mehr hilft bei schwachem Grundton',
+    'set.tolC': 'Teiltontoleranz',
+    'set.tolCSub': 'Suchfenster je Teilton — eng ist genauer',
+    'set.reject': 'Obertonabweisung',
+    'set.rejectSub': 'unterdrückt Geistersaiten',
+    'set.rej0': 'aus', 'set.rej1': 'mild', 'set.rej2': 'normal',
+    'set.rej3': 'streng', 'set.rej4': 'sehr streng',
+    'set.inharm': 'Inharmonizitätskorrektur',
+    'set.inharmSub': 'rechnet die Steifigkeit dicker Saiten heraus',
+    'set.mono': 'Schwelle Einzelton',
+    'set.monoSub': 'ab welcher Klarheit auf Einzelsaite umgeschaltet wird',
+    'set.gate': 'Rauschsperre',
+    'set.gateSub': 'blendet leise Störungen aus',
+    'set.snr': 'Mindest-Störabstand',
+    'set.snrSub': 'Peak gegenüber dem Rauschteppich',
+    'set.rel': 'Saiten-Mindestpegel',
+    'set.relSub': 'Anteil an der stärksten Saite',
+    'set.g3': 'Rückmeldung',
+    'set.haptics': 'Vibration bei „gestimmt“',
+    'set.chime': 'Bestätigungston',
+    'set.chimeSub': 'kurzer Klang, wenn eine Saite sitzt',
+    'set.ref': 'Referenzton',
+    'set.refSub': 'Lautstärke beim Antippen einer Saite',
+    'set.spec': 'Spektrum anzeigen',
+    'set.specSub': 'zeigt das Frequenzbild live',
+    'set.g4': 'Eingang',
+    'set.raw': 'Rohsignal verwenden',
+    'set.rawSub': 'schaltet Echo- und Rauschunterdrückung ab — für Stimmgeräte wichtig',
+    'set.mic': 'Mikrofon',
+    'set.micDefault': 'Standardgerät',
+    'set.reset': 'Alle Einstellungen zurücksetzen',
+    'set.privacy': 'Die Analyse läuft vollständig auf dem Gerät. Es werden keine Audiodaten übertragen.',
+    'set.about': 'Über',
+    'about.version': 'Version',
+    'about.author': 'Autor',
+    'about.license': 'Lizenz',
+    'about.licenseNote': 'Freie Software: Nutzung, Änderung und Weitergabe sind unter den Bedingungen der GPL in Version 3 oder später erlaubt. Es besteht keinerlei Gewährleistung.',
+    'tools.demo': 'Demo-Signal',
+    'tools.demoNote': 'Erzeugt intern ein verstimmtes Gitarrensignal. Damit lässt sich die Erkennung ohne Mikrofon ausprobieren — praktisch, wenn der Browser keinen Mikrofonzugriff erlaubt.',
+    'tools.strum': 'Voller Anschlag', 'tools.seq': 'Saiten nacheinander', 'tools.off': 'Aus',
+    'tools.metro': 'Metronom',
+    'tools.tempo': 'Tempo',
+    'tools.meter': 'Taktart',
+    'tools.meterNone': 'ohne Betonung',
+    'tools.start': 'Metronom starten', 'tools.stop': 'Metronom stoppen',
+    'tools.tap': 'Tempo klopfen',
+    'tools.chords': 'Akkorde',
+    'tools.lib': 'Akkordbibliothek für diese Stimmung',
+    'lib.info': 'Griffe werden für die aktuelle Stimmung berechnet: ',
+    'st.listening': 'Zuhören … {sr} Hz · Fenster {n} ({ms} ms)',
+    'st.stopped': 'Gestoppt.',
+    'st.demo': 'Demo-Signal läuft ({kind}), Verstimmung zufällig ±32 Cent.',
+    'st.demoEnd': 'Demo beendet.',
+    'st.noMic': 'Dieser Browser gibt keinen Mikrofonzugriff frei. Nutze das Demo-Signal unter Werkzeuge.',
+    'st.https': 'Mikrofon braucht HTTPS oder localhost. Über file:// bitte das Demo-Signal nutzen.',
+    'st.file': 'Direkt geöffnete Dateien dürfen oft nicht aufs Mikrofon zugreifen — dann Werkzeuge ▸ Demo-Signal nutzen.',
+    'st.err': 'Kein Mikrofonzugriff: {e}. Das Demo-Signal funktioniert trotzdem.',
+    'st.analysis': 'Analysefehler: ',
+    'inst.guitar': 'Gitarre', 'inst.bass': 'Bass', 'inst.ukulele': 'Ukulele',
+    'inst.banjo': 'Banjo', 'inst.mandolin': 'Mandoline',
+    'unit.strings': 'Saiten', 'unit.st': 'HT'
+  }
+};
+
+function T(key, vars) {
+  var d = LANG[S.lang] || LANG.en;
+  var s = d[key];
+  if (s === undefined) s = LANG.en[key];
+  if (s === undefined) return key;
+  if (vars) {
+    for (var k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  }
+  return s;
+}
+function tuningName(t) { return (S.lang === 'de' && t.de) ? t.de : t.name; }
+
+/* --------------------------------------------------------- Einstellungen */
+var DEFAULTS = {
+  instrument: 'guitar', tuning: 'std', mode: 'auto', lang: 'en',
+  a4: 440, transpose: 0, tolerance: 5,
+  fftSize: 16384, window: 'hann', rate: 15,
+  absFloor: 0.005, snrMin: 8.5, relThresh: 0.14, captureCents: 170,
+  harmonics: 6, tolCents: 12, harmReject: 2.2, inharmonic: true,
+  monoClarity: 0.9, smooth: 0.35, holdMs: 1500,
+  notation: 'intl', lefty: false, haptics: true, chime: false,
+  showSpectrum: false, refVol: 0.35, rawInput: true, deviceId: ''
+};
+
+var S = {};
+(function loadSettings() {
+  var raw = store.get('tonalis.settings');
+  var saved = {};
+  if (raw) { try { saved = JSON.parse(raw); } catch (e) { saved = {}; } }
+  for (var k in DEFAULTS) S[k] = (saved[k] !== undefined) ? saved[k] : DEFAULTS[k];
+})();
+function saveSettings() { store.set('tonalis.settings', JSON.stringify(S)); }
+
+/* --------------------------------------------------------------- Musik */
+function midiToFreq(m) { return S.a4 * Math.pow(2, (m - 69) / 12); }
+function freqToMidi(f) { return 69 + 12 * Math.log(f / S.a4) / Math.LN2; }
+function pcName(pc) {
+  pc = ((pc % 12) + 12) % 12;
+  var n = NOTES_SHARP[pc];
+  if (S.notation === 'de') {
+    if (pc === 11) return 'H';
+    if (pc === 10) return 'B';
+    return NOTES_SHARP[pc];
+  }
+  return n;
+}
+function midiName(m) { return pcName(Math.round(m) % 12); }
+function midiOct(m) { return Math.floor(Math.round(m) / 12) - 1; }
+
+function currentTuning() {
+  var list = TUNINGS[S.instrument];
+  for (var i = 0; i < list.length; i++) if (list[i].id === S.tuning) return list[i];
+  return list[0];
+}
+function targetMidis() {
+  return currentTuning().midi.map(function (m) { return m + S.transpose; });
+}
+function targetFreqs() { return targetMidis().map(midiToFreq); }
+
+/* ------------------------------------------------------------- Zustand */
+var ST = {
+  strings: [],          // pro Saite: {cents, freq, conf, last, tunedAt, blended}
+  focus: -1,
+  level: 0,
+  running: false,
+  mode: S.mode,
+  selected: -1,         // manuell gewählte Saite im Einzelmodus
+  strobePos: 0,
+  gaugeCents: 0,
+  lastAnalysis: 0,
+  lastChord: 0,
+  chord: null,
+  chordNotes: [],
+  spec: null
+};
+function resetStrings() {
+  ST.strings = targetFreqs().map(function () {
+    return { cents: 0, freq: 0, conf: 0, last: 0, tunedAt: 0, blended: false, raw: 0 };
+  });
+  ST.focus = -1; ST.selected = -1; ST.chrom = null;
+}
+
+/* ===================================================== Kopfplatten-SVG ===
+   Wirbel paarweise links und rechts (3+3, 2+2, 3+2 …).
+   Wichtig für die Saitenführung: Der seitliche Versatz eines Wirbels muss mit
+   seinem Abstand zum Sattel wachsen. Sonst schneidet die Linie der sattelnahen
+   Saite die der sattelfernen — genau das war in v0.2 falsch.
+   ======================================================================== */
+var hsRefs = [];
+function buildHeadstock() {
+  var svg = $('#hs');
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  svg.setAttribute('viewBox', '0 0 340 442');
+  hsRefs = [];
+
+  var n = targetFreqs().length;
+  var isBass = S.instrument === 'bass';
+  var CX = 170, NUTY = 312;
+
+  var defs = el('defs', {}, svg);
+  function lg(id, stops, x1, y1, x2, y2) {
+    var g = el('linearGradient', { id: id, x1: x1, y1: y1, x2: x2, y2: y2 }, defs);
+    stops.forEach(function (s) { el('stop', { offset: s[0], 'stop-color': s[1] }, g); });
+  }
+  lg('gWood', [['0', '#D2A067'], ['.16', '#B27B3C'], ['.5', '#8A5423'],
+                ['.84', '#5E3416'], ['1', '#3A1E0C']], '0', '0', '1', '0');
+  lg('gVeneer', [['0', 'rgba(255,236,200,.30)'], ['.35', 'rgba(255,225,180,.05)'],
+                 ['.7', 'rgba(0,0,0,.18)'], ['1', 'rgba(0,0,0,.45)']], '0', '0', '1', '.15');
+  lg('gRose', [['0', '#5E3A24'], ['.28', '#412515'], ['.7', '#2F1A0F'], ['1', '#4A2C1B']], '0', '0', '1', '0');
+  lg('gBone', [['0', '#F8F2E0'], ['.45', '#E0D4B4'], ['1', '#A2916F']], '0', '0', '0', '1');
+  lg('gFret', [['0', '#767C85'], ['.3', '#F4F8FC'], ['.58', '#AEB7C2'], ['1', '#565D66']], '0', '0', '0', '1');
+  lg('gBtn', [['0', '#FBFDFF'], ['.3', '#D2DAE4'], ['.52', '#8E969F'], ['.72', '#C6CED8'], ['1', '#6E767F']], '0', '0', '1', '1');
+  lg('gCover', [['0', '#3A3A3E'], ['.5', '#1D1D20'], ['1', '#2E2E32']], '0', '0', '1', '1');
+  lg('gPearl', [['0', '#FFFDF6'], ['.3', '#DCE6EA'], ['.55', '#F3E8F0'], ['.8', '#CBD8DE'], ['1', '#F6F1E4']], '0', '0', '1', '1');
+
+  var rgP = el('radialGradient', { id: 'gPost', cx: '.34', cy: '.28', r: '.85' }, defs);
+  el('stop', { offset: '0', 'stop-color': '#FDFEFF' }, rgP);
+  el('stop', { offset: '.4', 'stop-color': '#BEC6D0' }, rgP);
+  el('stop', { offset: '1', 'stop-color': '#575E67' }, rgP);
+  var rgB = el('radialGradient', { id: 'gBush', cx: '.35', cy: '.3', r: '.9' }, defs);
+  el('stop', { offset: '0', 'stop-color': '#E9EEF4' }, rgB);
+  el('stop', { offset: '.55', 'stop-color': '#98A1AC' }, rgB);
+  el('stop', { offset: '1', 'stop-color': '#4A5058' }, rgB);
+
+  var fG = el('filter', { id: 'fGrain', x: '-10%', y: '-10%', width: '120%', height: '120%' }, defs);
+  el('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.9 0.018', numOctaves: '4', seed: '17', result: 't' }, fG);
+  el('feColorMatrix', { type: 'matrix', values: '0 0 0 0 0.19  0 0 0 0 0.10  0 0 0 0 0.03  0 0 0 0.5 0' }, fG);
+
+  var fGl = el('filter', { id: 'fGlow', x: '-80%', y: '-80%', width: '260%', height: '260%' }, defs);
+  el('feGaussianBlur', { stdDeviation: '3.6', result: 'b' }, fGl);
+  var fm = el('feMerge', {}, fGl);
+  el('feMergeNode', { in: 'b' }, fm); el('feMergeNode', { in: 'SourceGraphic' }, fm);
+
+  var fD = el('filter', { id: 'fDrop', x: '-40%', y: '-25%', width: '180%', height: '160%' }, defs);
+  el('feDropShadow', { dx: '0', dy: '8', stdDeviation: '8', 'flood-color': '#000', 'flood-opacity': '.6' }, fD);
+
+  /* „Open Book“-Silhouette, symmetrisch um CX */
+  var BODY = 'M 116,' + NUTY + ' C 110,266 100,220 96,178 C 92,140 90,96 104,64 ' +
+             'C 117,39 149,33 164,62 C 166,67 174,67 176,62 ' +
+             'C 191,33 223,39 236,64 C 250,96 248,140 244,178 ' +
+             'C 240,220 230,266 224,' + NUTY + ' Z';
+  var cp = el('clipPath', { id: 'clipBody' }, defs);
+  el('path', { d: BODY }, cp);
+
+  /* ------------------------------------------------ Griffbrett und Hals */
+  var halfNut = 48 + Math.max(0, n - 6) * 4.5;
+  var board = el('g', {}, svg);
+  el('polygon', {
+    points: (CX - halfNut - 4) + ',' + (NUTY + 2) + ' ' + (CX + halfNut + 4) + ',' + (NUTY + 2) +
+            ' ' + (CX + halfNut + 12) + ',442 ' + (CX - halfNut - 12) + ',442',
+    fill: 'url(#gRose)'
+  }, board);
+  el('rect', { x: CX - halfNut - 5, y: NUTY + 2, width: 2.5, height: 130, fill: 'rgba(230,220,200,.30)' }, board);
+  el('rect', { x: CX + halfNut + 3, y: NUTY + 2, width: 2.5, height: 130, fill: 'rgba(230,220,200,.30)' }, board);
+  [356, 404].forEach(function (y) {
+    var t = (y - NUTY) / 130;
+    var x1 = CX - halfNut - 4 - 8 * t, x2 = CX + halfNut + 4 + 8 * t;
+    el('rect', { x: x1, y: y, width: x2 - x1, height: 3.4, fill: 'url(#gFret)', rx: 1.6 }, board);
+    el('rect', { x: x1, y: y + 3.4, width: x2 - x1, height: 1.4, fill: 'rgba(0,0,0,.35)' }, board);
+  });
+  el('circle', { cx: CX, cy: 380, r: 4, fill: 'url(#gPearl)', opacity: '.85' }, board);
+
+  /* ------------------------------------------------------- Kopfplatte */
+  var body = el('g', { filter: 'url(#fDrop)' }, svg);
+  el('path', { d: BODY, fill: 'url(#gWood)' }, body);
+  var grain = el('g', { 'clip-path': 'url(#clipBody)' }, body);
+  el('rect', { x: 70, y: 14, width: 200, height: 305, filter: 'url(#fGrain)', opacity: '.55' }, grain);
+  for (var gi = 0; gi < 9; gi++) {
+    var gx = 84 + gi * 21;
+    el('path', {
+      d: 'M ' + gx + ',' + NUTY + ' C ' + (gx - 7 + gi) + ',232 ' + (gx + 8) + ',140 ' + (gx + 3 + gi * 0.6) + ',26',
+      fill: 'none', stroke: 'rgba(44,20,4,.26)', 'stroke-width': (0.7 + (gi % 3) * 0.55)
+    }, grain);
+  }
+  /* Lack-Glanz und abgedunkelter Rand */
+  el('path', { d: BODY, fill: 'url(#gVeneer)', 'clip-path': 'url(#clipBody)' }, body);
+  el('path', {
+    d: 'M 122,296 C 113,248 101,200 98,154 C 96,116 101,80 116,60',
+    fill: 'none', stroke: 'rgba(255,240,215,.10)', 'stroke-width': '4.5', 'stroke-linecap': 'round',
+    'clip-path': 'url(#clipBody)'
+  }, body);
+  el('path', { d: BODY, fill: 'none', stroke: 'rgba(26,11,2,.55)', 'stroke-width': '9', 'clip-path': 'url(#clipBody)' }, body);
+  el('path', { d: BODY, fill: 'none', stroke: 'rgba(20,8,0,.85)', 'stroke-width': '2.6', 'clip-path': 'url(#clipBody)' }, body);
+  el('path', { d: BODY, fill: 'none', stroke: 'rgba(255,226,180,.35)', 'stroke-width': '1' }, body);
+
+  /* Perlmutt-Logo zwischen den Lappen */
+  var logo = el('text', {
+    x: CX, y: 104, fill: 'url(#gPearl)', 'font-size': '17',
+    'font-family': 'Georgia, serif', 'font-style': 'italic',
+    'text-anchor': 'middle', transform: 'rotate(-2 ' + CX + ' 104)'
+  }, svg);
+  logo.textContent = 'Tonalis';
+  el('text', {
+    x: CX, y: 121, fill: 'rgba(255,245,225,.42)', 'font-size': '7.5',
+    'letter-spacing': '2.4', 'text-anchor': 'middle',
+    'font-family': '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif'
+  }, svg).textContent = 'PRECISION TUNER';
+
+  /* Halsstab-Abdeckung */
+  var cover = el('g', {}, svg);
+  el('path', {
+    d: 'M ' + (CX - 15) + ',' + (NUTY - 44) + ' q 15,-9 30,0 l 4,34 q -19,7 -38,0 z',
+    fill: 'url(#gCover)', stroke: 'rgba(0,0,0,.55)', 'stroke-width': '1'
+  }, cover);
+  el('circle', { cx: CX - 10, cy: NUTY - 40, r: 2, fill: '#9BA3AD' }, cover);
+  el('circle', { cx: CX + 10, cy: NUTY - 40, r: 2, fill: '#9BA3AD' }, cover);
+  el('circle', { cx: CX, cy: NUTY - 13, r: 2, fill: '#9BA3AD' }, cover);
+
+  /* Sattel */
+  el('rect', { x: CX - halfNut - 6, y: NUTY - 9, width: (halfNut + 6) * 2, height: 12, rx: 3, fill: 'url(#gBone)' }, svg);
+  el('rect', { x: CX - halfNut - 6, y: NUTY - 9, width: (halfNut + 6) * 2, height: 12, rx: 3,
+               fill: 'none', stroke: 'rgba(0,0,0,.4)', 'stroke-width': '.9' }, svg);
+
+  /* ------------------------------------------- Wirbelpositionen bestimmen */
+  var nLeft = Math.ceil(n / 2), nRight = n - nLeft;
+  var yTop = 84, yBot = 196;
+
+  function postsFor(k) {
+    var out = [], j;
+    for (j = 0; j < k; j++) {
+      var y = k > 1 ? yTop + j * (yBot - yTop) / (k - 1) : (yTop + yBot) / 2;
+      /* Versatz nimmt zum Sattel hin ab: verhindert sich kreuzende Saiten */
+      var off = k > 1 ? 62 - j * (24 / (k - 1)) : 50;
+      out.push({ y: y, off: off });
+    }
+    return out;
+  }
+  var pl = postsFor(nLeft), pr = postsFor(nRight);
+
+  /* Zuordnung Saite -> Wirbel:
+     linke Hälfte (tiefe Saiten): tiefste Saite an den sattelfernsten Wirbel.
+     rechte Hälfte (hohe Saiten): sattelnächster Wirbel zuerst, spiegelbildlich. */
+  var slots = [];
+  for (var i = 0; i < n; i++) {
+    if (i < nLeft) slots.push({ x: CX - pl[i].off, y: pl[i].y, side: -1 });
+    else {
+      var j2 = nRight - 1 - (i - nLeft);   // sattelnah zuerst
+      slots.push({ x: CX + pr[j2].off, y: pr[j2].y, side: 1 });
+    }
+  }
+
+  var nutL = CX - halfNut + 6, nutR = CX + halfNut - 6;
+  var span = n > 1 ? (nutR - nutL) / (n - 1) : 0;
+
+  /* ------------------------------------------------ Mechaniken und Saiten */
+  for (i = 0; i < n; i++) {
+    var s = slots[i];
+    var nx = nutL + span * i;
+    var g = el('g', {}, svg);
+    var dir = s.side;                       // -1 links, +1 rechts
+    var btnX = CX + dir * 116;
+
+    /* Achse vom Wirbel nach außen zum Flügel */
+    el('rect', { x: Math.min(s.x, btnX), y: s.y - 3.4, width: Math.abs(btnX - s.x), height: 6.8, rx: 3.4, fill: 'url(#gBtn)' }, g);
+    el('rect', { x: Math.min(s.x, btnX), y: s.y - 3.4, width: Math.abs(btnX - s.x), height: 2.2, rx: 1.1, fill: 'rgba(255,255,255,.55)' }, g);
+
+    /* Flügel (Keystone-Form) */
+    var bx = btnX;
+    el('path', {
+      d: 'M ' + bx + ',' + (s.y - 13) + ' q ' + (dir * 15) + ',3 ' + (dir * 15) + ',13 ' +
+         'q 0,10 ' + (-dir * 15) + ',13 l ' + (-dir * 13) + ',-4 l 0,-18 z',
+      fill: 'url(#gBtn)', stroke: 'rgba(0,0,0,.5)', 'stroke-width': '.9'
+    }, g);
+    el('path', {
+      d: 'M ' + (bx + dir * 3) + ',' + (s.y - 8) + ' q ' + (dir * 8) + ',8 0,16',
+      fill: 'none', stroke: 'rgba(255,255,255,.6)', 'stroke-width': '1.3'
+    }, g);
+
+    /* Buchse, Statusring, Achse, Wicklung */
+    var ring = el('circle', { cx: s.x, cy: s.y, r: 15, fill: 'none', stroke: 'rgba(255,255,255,.10)', 'stroke-width': '2.8' }, g);
+    el('circle', { cx: s.x, cy: s.y, r: 11.5, fill: 'url(#gBush)', stroke: 'rgba(0,0,0,.45)', 'stroke-width': '.9' }, g);
+    el('circle', { cx: s.x, cy: s.y, r: 7.6, fill: 'url(#gPost)' }, g);
+    for (var w = 0; w < 3; w++) {
+      el('rect', { x: s.x - 7.6, y: s.y - 4.6 + w * 3.3, width: 15.2, height: 1.5, rx: .7, fill: 'rgba(214,224,236,.6)' }, g);
+    }
+    el('circle', { cx: s.x - 2.6, cy: s.y - 2.6, r: 2.4, fill: 'rgba(255,255,255,.7)' }, g);
+
+    /* Saite: Wirbel -> Sattel -> Griffbrett */
+    var gauge = isBass ? (4.0 - i * 0.5) : (3.2 - i * (n > 1 ? 2.0 / (n - 1) : 0));
+    gauge = Math.max(1.05, gauge);
+    var wound = i < Math.ceil(n / 2);
+    var strCol = wound ? '#C6AB84' : '#E0E7EF';
+    var bxEnd = nx + (nx - CX) * 0.12;
+    var d = 'M ' + s.x + ',' + s.y + ' L ' + nx + ',' + (NUTY - 5) + ' L ' + bxEnd + ',442';
+
+    var glow = el('path', { d: d, fill: 'none', stroke: '#43C98B', 'stroke-width': gauge + 4,
+      opacity: '0', filter: 'url(#fGlow)', 'stroke-linecap': 'round' }, g);
+    el('path', { d: d, fill: 'none', stroke: 'rgba(0,0,0,.45)', 'stroke-width': gauge + 1.4,
+      'stroke-linecap': 'round', transform: 'translate(1.4,1.8)' }, g);
+    var str = el('path', { d: d, fill: 'none', stroke: strCol, 'stroke-width': gauge, 'stroke-linecap': 'round' }, g);
+    if (wound) {
+      el('path', { d: d, fill: 'none', stroke: 'rgba(58,38,16,.55)', 'stroke-width': gauge,
+        'stroke-dasharray': '1 2.4', 'stroke-linecap': 'butt' }, g);
+    }
+    el('path', { d: d, fill: 'none', stroke: 'rgba(255,255,255,.6)',
+      'stroke-width': Math.max(.4, gauge * 0.28), 'stroke-linecap': 'round',
+      transform: 'translate(-0.7,-0.7)' }, g);
+
+    /* Beschriftung außen, Pfeil darüber/darunter */
+    var lx = dir < 0 ? 18 : 322;
+    var lbl = el('text', {
+      x: lx, y: s.y + 6, fill: '#9C9184', 'font-size': '19', 'font-weight': '600',
+      'text-anchor': 'middle',
+      'font-family': '-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif'
+    }, svg);
+    lbl.textContent = '–';
+    var arw = el('path', { d: '', fill: '#9C9184', opacity: '0' }, svg);
+
+    var hitX = dir < 0 ? 4 : CX;
+    var hit = el('rect', { x: hitX, y: s.y - 20, width: 166, height: 40, fill: 'rgba(0,0,0,0)', style: 'cursor:pointer' }, svg);
+    (function (idx) { hit.addEventListener('click', function () { onStringTap(idx); }); })(i);
+
+    hsRefs.push({
+      ring: ring, str: str, glow: glow, lbl: lbl, arw: arw, py: s.y, base: strCol,
+      dUp:   'M ' + lx + ',' + (s.y - 25) + ' l 8,12 l -16,0 z',
+      dDown: 'M ' + lx + ',' + (s.y + 27) + ' l 8,-12 l -16,0 z',
+      dOk:   'M ' + (lx - 7) + ',' + (s.y - 18) + ' l 5,6 l 10,-12 l 3,2.4 l -12.6,16 z'
+    });
+  }
+  updateHeadstockLabels();
+}
+
+function updateHeadstockLabels() {
+  var mids = targetMidis();
+  for (var i = 0; i < hsRefs.length && i < mids.length; i++) {
+    hsRefs[i].lbl.textContent = midiName(mids[i]);
+  }
+}
+
+/* =============================================================== Anzeige */
+function buildGauge() {
+  var svg = $('#gauge');
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  var cx = 180, cy = 104, r = 86;
+  var g = el('g', {}, svg);
+
+  /* Toleranzzone */
+  var tol = S.tolerance;
+  var a1 = tol / 50 * 60;
+  function pt(cents, rad) {
+    var a = (cents / 50 * 60 - 90) * Math.PI / 180;
+    return [cx + Math.cos(a) * rad, cy + Math.sin(a) * rad];
+  }
+  var p1 = pt(-tol, r + 4), p2 = pt(tol, r + 4), p3 = pt(tol, r - 16), p4 = pt(-tol, r - 16);
+  el('path', {
+    d: 'M ' + p1[0] + ',' + p1[1] + ' A ' + (r + 4) + ',' + (r + 4) + ' 0 0 1 ' + p2[0] + ',' + p2[1] +
+       ' L ' + p3[0] + ',' + p3[1] + ' A ' + (r - 16) + ',' + (r - 16) + ' 0 0 0 ' + p4[0] + ',' + p4[1] + ' Z',
+    fill: 'rgba(67,201,139,.16)'
+  }, g);
+
+  for (var c = -50; c <= 50; c += 5) {
+    var major = (c % 25 === 0);
+    var A = pt(c, r + 4), B = pt(c, r + 4 - (major ? 15 : 8));
+    el('line', {
+      x1: A[0], y1: A[1], x2: B[0], y2: B[1],
+      stroke: major ? '#9C9184' : '#332B22', 'stroke-width': major ? 1.8 : 1.1,
+      'stroke-linecap': 'round'
+    }, g);
+    if (major) {
+      var L = pt(c, r - 28);
+      var t = el('text', {
+        x: L[0], y: L[1] + 4, fill: '#6B6155', 'font-size': '11', 'text-anchor': 'middle'
+      }, g);
+      t.textContent = (c > 0 ? '+' : '') + c;
+    }
+  }
+
+  /* Bogen der aktuellen Abweichung */
+  gaugeArc = el('path', { d: '', fill: 'none', stroke: '#43C98B', 'stroke-width': '4', 'stroke-linecap': 'round', opacity: '0' }, g);
+
+  gaugeNeedle = el('g', { transform: 'rotate(0 ' + cx + ' ' + cy + ')' }, g);
+  el('polygon', {
+    points: (cx - 4) + ',' + cy + ' ' + (cx + 4) + ',' + cy + ' ' + (cx + 1.3) + ',' + (cy - r + 2) + ' ' + (cx - 1.3) + ',' + (cy - r + 2),
+    fill: '#F0E9DE'
+  }, gaugeNeedle);
+  el('circle', { cx: cx, cy: cy, r: 7, fill: '#262019', stroke: '#332B22' }, g);
+  el('circle', { cx: cx, cy: cy, r: 2.4, fill: '#9C9184' }, g);
+}
+var gaugeNeedle = null, gaugeArc = null;
+
+function setGauge(cents, active) {
+  if (!gaugeNeedle) return;
+  var cx = 180, cy = 104, r = 86;
+  var c = clamp(cents, -52, 52);
+  gaugeNeedle.setAttribute('transform', 'rotate(' + (c / 50 * 60) + ' ' + cx + ' ' + cy + ')');
+  gaugeNeedle.style.opacity = active ? '1' : '.35';
+  if (!active || Math.abs(cents) < 0.6) { gaugeArc.setAttribute('opacity', '0'); return; }
+  function pt(cc, rad) {
+    var a = (cc / 50 * 60 - 90) * Math.PI / 180;
+    return [cx + Math.cos(a) * rad, cy + Math.sin(a) * rad];
+  }
+  var A = pt(0, r + 9), B = pt(c, r + 9);
+  gaugeArc.setAttribute('d', 'M ' + A[0] + ',' + A[1] + ' A ' + (r + 9) + ',' + (r + 9) + ' 0 0 ' + (c > 0 ? 1 : 0) + ' ' + B[0] + ',' + B[1]);
+  gaugeArc.setAttribute('stroke', statusColor(cents));
+  gaugeArc.setAttribute('opacity', '.9');
+}
+
+function statusColor(cents) {
+  var a = Math.abs(cents);
+  if (a <= S.tolerance) return '#43C98B';
+  if (a <= S.tolerance * 3.5) return '#D8A93C';
+  return '#D2604F';
+}
+
+/* Saitenliste */
+var rowRefs = [];
+function buildRows() {
+  var box = $('#strings');
+  box.innerHTML = '';
+  rowRefs = [];
+  var mids = targetMidis();
+  var freqs = targetFreqs();
+  for (var i = 0; i < mids.length; i++) {
+    var row = h('div', 'srow');
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    var num = h('div', 's-num', String(mids.length - i));
+    var name = h('div', 's-name');
+    name.innerHTML = midiName(mids[i]) + '<i>' + midiOct(mids[i]) + '</i>';
+    var bar = h('div', 's-bar');
+    var zone = h('span', 'zone'); zone.style.width = (S.tolerance / 50 * 100) + '%';
+    var pin = h('span', 'pin');
+    bar.appendChild(zone); bar.appendChild(pin);
+    var val = h('div', 's-val', freqs[i].toFixed(1));
+    row.appendChild(num); row.appendChild(name); row.appendChild(bar); row.appendChild(val);
+    (function (idx) {
+      row.addEventListener('click', function () { onStringTap(idx); });
+      row.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStringTap(idx); } });
+    })(i);
+    box.appendChild(row);
+    rowRefs.push({ row: row, pin: pin, val: val, name: name, zone: zone });
+  }
+}
+
+function onStringTap(i) {
+  if (ST.mode === 'single' || (!ST.running && ST.mode !== 'chord')) {
+    ST.selected = (ST.selected === i) ? -1 : i;
+  }
+  playReference(targetFreqs()[i]);
+  render();
+}
+
+/* ------------------------------------------------------------- Rendering */
+function render() {
+  var freqs = targetFreqs();
+  var mids = targetMidis();
+  var now = performance.now();
+  var anyShown = false;
+  var focus = -1, worst = -1;
+
+  for (var i = 0; i < ST.strings.length; i++) {
+    var st = ST.strings[i];
+    var age = now - st.last;
+    var shown = st.last > 0 && age < S.holdMs;
+    var fade = shown ? clamp(1 - age / S.holdMs, 0.25, 1) : 0;
+    if (shown) anyShown = true;
+    var ref = hsRefs[i], row = rowRefs[i];
+    if (!ref || !row) continue;
+
+    var col = shown ? statusColor(st.cents) : 'rgba(255,255,255,.10)';
+    ref.ring.setAttribute('stroke', col);
+    ref.ring.setAttribute('stroke-width', shown ? 3.2 : 2.6);
+    ref.ring.style.opacity = shown ? String(0.35 + 0.65 * fade) : '1';
+    ref.glow.setAttribute('stroke', col);
+    ref.glow.style.opacity = shown ? String(0.42 * fade) : '0';
+    ref.lbl.setAttribute('fill', shown ? col : '#9C9184');
+
+    /* Richtungspfeil */
+    if (shown && Math.abs(st.cents) > S.tolerance) {
+      ref.arw.setAttribute('d', st.cents < 0 ? ref.dUp : ref.dDown);  // zu tief -> hoch
+      ref.arw.setAttribute('fill', col);
+      ref.arw.setAttribute('opacity', '.95');
+    } else if (shown) {
+      ref.arw.setAttribute('d', ref.dOk);
+      ref.arw.setAttribute('fill', '#43C98B');
+      ref.arw.setAttribute('opacity', '.95');
+    } else {
+      ref.arw.setAttribute('opacity', '0');
+    }
+
+    row.row.classList.toggle('on', shown || ST.selected === i);
+    row.row.classList.toggle('sel', ST.selected === i);
+    var tuned = shown && Math.abs(st.cents) <= S.tolerance;
+    row.row.classList.toggle('tuned', tuned);
+    row.pin.style.left = 'calc(' + (50 + clamp(st.cents, -50, 50)) + '% - 1.5px)';
+    row.pin.style.background = shown ? col : '#6B6155';
+    row.val.innerHTML = shown
+      ? '<b style="color:' + col + '">' + (st.cents > 0 ? '+' : '') + st.cents.toFixed(1) + '</b>'
+      : freqs[i].toFixed(1);
+    row.name.innerHTML = midiName(mids[i]) + '<i>' + midiOct(mids[i]) + '</i>';
+
+    if (shown && (worst < 0 || Math.abs(st.cents) > Math.abs(ST.strings[worst].cents))) worst = i;
+  }
+
+  /* Fokus bestimmen */
+  if (ST.mode === 'single' && ST.selected >= 0) focus = ST.selected;
+  else if (ST.focus >= 0 && ST.strings[ST.focus] && now - ST.strings[ST.focus].last < S.holdMs) focus = ST.focus;
+  else if (worst >= 0) focus = worst;
+
+  var rdNote = $('#rdNote'), rdOct = $('#rdOct'), rdSub = $('#rdSub'), rdCents = $('#rdCents');
+  if (focus >= 0 && ST.strings[focus] && now - ST.strings[focus].last < S.holdMs) {
+    var f = ST.strings[focus];
+    rdNote.textContent = midiName(mids[focus]);
+    rdNote.style.color = statusColor(f.cents);
+    rdOct.textContent = midiOct(mids[focus]);
+    rdSub.innerHTML = '<b>' + f.freq.toFixed(2) + ' Hz</b> · ' + T('rd.target') + ' ' + freqs[focus].toFixed(2) + ' Hz'
+      + (f.blended ? ' · <span style="color:#D8A93C">' + T('rd.blended') + '</span>' : '');
+    var a = Math.abs(f.cents);
+    rdCents.style.color = statusColor(f.cents);
+    rdCents.textContent = a <= S.tolerance
+      ? T('rd.tuned')
+      : (f.cents > 0 ? '+' : '') + f.cents.toFixed(1) + ' ' + T('rd.cent') + ' · ' + (f.cents < 0 ? T('rd.raise') : T('rd.lower'));
+    setGauge(f.cents, true);
+    $('#strobe').classList.add('live');
+  } else if (ST.chrom && now - ST.chrom.last < S.holdMs) {
+    /* Ton gehört zu keiner Saite der Stimmung: chromatisch anzeigen */
+    var ch = ST.chrom;
+    rdNote.textContent = midiName(ch.midi);
+    rdNote.style.color = statusColor(ch.cents);
+    rdOct.textContent = midiOct(ch.midi);
+    rdSub.innerHTML = '<b>' + ch.freq.toFixed(2) + ' Hz</b> · ' + T('chrom.hint');
+    rdCents.style.color = statusColor(ch.cents);
+    rdCents.textContent = (ch.cents > 0 ? '+' : '') + ch.cents.toFixed(1) + ' ' + T('chrom.to') + ' ' + midiName(ch.midi);
+    setGauge(ch.cents, true);
+    $('#strobe').classList.add('live');
+  } else {
+    rdNote.textContent = '—'; rdNote.style.color = '#F0E9DE';
+    rdOct.textContent = ''; rdCents.textContent = '';
+    rdSub.textContent = ST.running ? T('rd.play') : T('rd.idle');
+    setGauge(0, false);
+    $('#strobe').classList.remove('live');
+  }
+
+  var hint = $('#hint');
+  if (ST.mode === 'single') {
+    hint.textContent = ST.selected >= 0
+      ? T('hint.singleSet', { n: mids.length - ST.selected })
+      : T('hint.singleTap');
+  } else if (ST.mode === 'poly') {
+    hint.textContent = T('hint.poly');
+  } else if (ST.mode === 'auto') {
+    hint.textContent = ST.lastMono ? T('hint.autoMono') : (anyShown ? T('hint.autoMulti') : T('hint.autoIdle'));
+  } else hint.textContent = '';
+}
+
+
+/* ===================================================== Audio-Engine ===== */
+var AC = null, analyser = null, micStream = null, srcNode = null, tdBuf = null;
+var demoNode = null, rafId = 0, lastTs = 0;
+
+function ensureCtx() {
+  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+  if (AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function fftSizeSafe() {
+  var n = S.fftSize | 0;
+  if (n < 2048) n = 2048;
+  if (n > 32768) n = 32768;
+  return n;
+}
+function makeAnalyser() {
+  var a = AC.createAnalyser();
+  a.fftSize = fftSizeSafe();
+  a.smoothingTimeConstant = 0;
+  tdBuf = new Float32Array(a.fftSize);
+  return a;
+}
+function dspOpts() {
+  return {
+    pad: 2, window: S.window, gate: S.absFloor * 1.4,
+    absFloor: S.absFloor, snrMin: S.snrMin, relThresh: S.relThresh,
+    captureCents: S.captureCents, harmonics: S.harmonics,
+    tolCents: S.tolCents, salTolCents: Math.max(12, S.tolCents + 2),
+    harmonicReject: S.harmReject > 0, harmReject: S.harmReject,
+    inharmonic: S.inharmonic, monoClarity: S.monoClarity,
+    a4: S.a4, nsdfLen: 8192
+  };
+}
+
+function setStatus(t) { $('#status').textContent = t; }
+
+async function startMic() {
+  try {
+    ensureCtx();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus(T('st.noMic'));
+      return;
+    }
+    if (!window.isSecureContext) {
+      setStatus(T('st.https'));
+    }
+    var c = {
+      echoCancellation: !S.rawInput, noiseSuppression: !S.rawInput,
+      autoGainControl: !S.rawInput, channelCount: 1
+    };
+    if (S.deviceId) c.deviceId = { exact: S.deviceId };
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: c, video: false });
+    stopDemo();
+    srcNode = AC.createMediaStreamSource(micStream);
+    analyser = makeAnalyser();
+    srcNode.connect(analyser);
+    ST.running = true;
+    $('#btnMic').classList.add('live');
+    $('#micLabel').textContent = T('foot.micRunning');
+    setStatus(T('st.listening', { sr: AC.sampleRate, n: fftSizeSafe(),
+      ms: (fftSizeSafe() / AC.sampleRate * 1000).toFixed(0) }));
+    listDevices();
+    startLoop();
+  } catch (e) {
+    setStatus(T('st.err', { e: (e && e.name ? e.name : e) }));
+  }
+}
+function stopMic() {
+  if (micStream) { micStream.getTracks().forEach(function (t) { t.stop(); }); micStream = null; }
+  if (srcNode) { try { srcNode.disconnect(); } catch (e) {} srcNode = null; }
+  if (!demoNode) { ST.running = false; stopLoop(); }
+  $('#btnMic').classList.remove('live');
+  $('#micLabel').textContent = T('foot.micStart');
+  setStatus(T('st.stopped'));
+  resetStrings(); render();
+}
+function listDevices() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  navigator.mediaDevices.enumerateDevices().then(function (ds) {
+    ST.devices = ds.filter(function (d) { return d.kind === 'audioinput'; });
+  }).catch(function () {});
+}
+
+/* ------------------------------------------------------- Demo-Generator */
+function pluckInto(data, sr, f0, amp, start, dur) {
+  var H = 14, B = 5e-5;
+  for (var hh = 1; hh <= H; hh++) {
+    var fh = f0 * hh * Math.sqrt(1 + B * hh * hh);
+    if (fh > sr * 0.45) break;
+    var a = amp * Math.pow(hh, -1.25) * (hh === 1 ? 0.55 : 1) * (0.7 + 0.6 * Math.random());
+    var ph = Math.random() * 6.283, dec = 1.15 * (1 + 0.28 * (hh - 1));
+    var n0 = Math.floor(start * sr), n1 = Math.min(data.length, Math.floor((start + dur) * sr));
+    for (var n = n0; n < n1; n++) {
+      var t = (n - n0) / sr;
+      data[n] += a * Math.exp(-t * dec) * Math.sin(2 * Math.PI * fh * t + ph);
+    }
+  }
+}
+function startDemo(kind) {
+  ensureCtx();
+  stopDemo();
+  if (micStream) stopMic();
+  var sr = AC.sampleRate, tf = targetFreqs();
+  var dur = kind === 'single' ? tf.length * 2.4 + 0.6 : 4.4;
+  var buf = AC.createBuffer(1, Math.ceil(sr * dur), sr);
+  var d = buf.getChannelData(0);
+  ST.demoOffsets = [];
+  for (var i = 0; i < tf.length; i++) {
+    var off = (Math.random() * 2 - 1) * 32;
+    ST.demoOffsets.push(off);
+    var f = tf[i] * Math.pow(2, off / 1200);
+    if (kind === 'single') pluckInto(d, sr, f, 0.30, 0.3 + i * 2.4, 2.3);
+    else pluckInto(d, sr, f, 0.17, i * 0.09, dur);
+  }
+  for (var n = 0; n < d.length; n++) d[n] += (Math.random() * 2 - 1) * 0.002;
+  demoNode = AC.createBufferSource();
+  demoNode.buffer = buf; demoNode.loop = true;
+  analyser = makeAnalyser();
+  var g = AC.createGain(); g.gain.value = 0.5;
+  demoNode.connect(analyser);
+  demoNode.connect(g); g.connect(AC.destination);
+  demoNode.start();
+  ST.running = true;
+  setStatus(T('st.demo', { kind: kind === 'single' ? T('tools.seq') : T('tools.strum') }));
+  startLoop();
+}
+function stopDemo() {
+  if (demoNode) { try { demoNode.stop(); demoNode.disconnect(); } catch (e) {} demoNode = null; }
+  if (!micStream) { ST.running = false; stopLoop(); setStatus(T('st.demoEnd')); resetStrings(); render(); }
+}
+
+/* --------------------------------------------------------- Referenzton */
+function playReference(freq) {
+  var ctx = ensureCtx();
+  var n = 14, real = new Float32Array(n), imag = new Float32Array(n);
+  for (var hh = 1; hh < n; hh++) imag[hh] = Math.pow(hh, -1.5);
+  var wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  var osc = ctx.createOscillator(), g = ctx.createGain();
+  osc.setPeriodicWave(wave); osc.frequency.value = freq;
+  var t = ctx.currentTime, v = S.refVol;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.001, v), t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
+  osc.connect(g); g.connect(ctx.destination);
+  osc.start(t); osc.stop(t + 2.3);
+}
+function chime() {
+  var ctx = ensureCtx(), t = ctx.currentTime;
+  [880, 1320].forEach(function (f, i) {
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + i * 0.06);
+    g.gain.exponentialRampToValueAtTime(0.13, t + i * 0.06 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.06 + 0.28);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t + i * 0.06); o.stop(t + i * 0.06 + 0.3);
+  });
+}
+
+/* ======================================================== Analyseloop === */
+function startLoop() { if (!rafId) { lastTs = performance.now(); rafId = requestAnimationFrame(loop); } }
+function stopLoop() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
+
+function loop(ts) {
+  rafId = requestAnimationFrame(loop);
+  var dt = Math.min(64, ts - lastTs); lastTs = ts;
+  if (analyser && ts - ST.lastAnalysis >= 1000 / S.rate) {
+    ST.lastAnalysis = ts;
+    try { analyze(); } catch (e) { setStatus(T('st.analysis') + e.message); }
+  }
+  /* Strobe-Band bewegt sich proportional zur Abweichung */
+  var f = ST.focus >= 0 && ST.strings[ST.focus] ? ST.strings[ST.focus] : null;
+  var live = f && performance.now() - f.last < S.holdMs;
+  if (live) {
+    ST.strobePos += f.cents * dt * 0.022;
+    $('#strobe').style.backgroundPositionX = (ST.strobePos % 40).toFixed(1) + 'px';
+  }
+}
+
+function updateString(i, cents, freq, conf, blended) {
+  var st = ST.strings[i];
+  if (!st) return;
+  var now = performance.now();
+  var alpha = clamp(1 - S.smooth, 0.08, 1);
+  if (now - st.last > 350 || Math.abs(cents - st.cents) > 45 || st.last === 0) {
+    st.cents = cents; st.freq = freq;
+  } else {
+    st.cents += (cents - st.cents) * alpha;
+    st.freq += (freq - st.freq) * alpha;
+  }
+  st.conf = conf; st.blended = !!blended; st.last = now;
+  if (Math.abs(st.cents) <= S.tolerance) {
+    if (!st.tunedAt) {
+      st.tunedAt = now;
+      if (S.haptics && navigator.vibrate) navigator.vibrate(18);
+      if (S.chime) chime();
+    }
+  } else st.tunedAt = 0;
+}
+
+function analyze() {
+  analyser.getFloatTimeDomainData(tdBuf);
+  var sr = AC.sampleRate;
+  var tf = targetFreqs();
+  var opts = dspOpts();
+
+  if (ST.mode === 'chord') {
+    var lvl = DSP.rms(tdBuf);
+    ST.level = lvl;
+    $('#levelBar').style.width = clamp(lvl * 420, 0, 100) + '%';
+    if (performance.now() - ST.lastChord > 260 && lvl > S.absFloor * 2) {
+      ST.lastChord = performance.now();
+      analyzeChord(sr, opts);
+    }
+    return;
+  }
+
+  var r = DSP.analyzeFrame(tdBuf, sr, tf, opts);
+  ST.level = r.level;
+  ST.spec = S.showSpectrum ? r.spec : null;
+  $('#levelBar').style.width = clamp(r.level * 420, 0, 100) + '%';
+  ST.lastMono = r.isMono;
+
+  var forced = (ST.mode === 'single' && ST.selected >= 0) ? ST.selected : -1;
+
+  if (forced >= 0) {
+    /* Feste Saite: auch weit verstimmte Saiten werden bewertet */
+    var fr = r.monoInfo ? r.monoInfo.freq : (r.mono.freq || 0);
+    if (fr > 0 && r.level > S.absFloor) {
+      var c = 1200 * Math.log(fr / tf[forced]) / Math.LN2;
+      if (Math.abs(c) < 700) {
+        updateString(forced, c, fr, r.mono.clarity, false);
+        ST.focus = forced;
+      }
+    }
+  } else if (r.isMono && r.monoInfo) {
+    if (r.monoInfo.string >= 0) {
+      updateString(r.monoInfo.string, r.monoInfo.cents, r.monoInfo.freq, r.monoInfo.clarity, false);
+      ST.focus = r.monoInfo.string;
+      ST.chrom = null;
+    } else {
+      /* Ton außerhalb der Stimmung: chromatisch anzeigen */
+      var m = Math.round(freqToMidi(r.monoInfo.freq));
+      ST.chrom = {
+        midi: m, freq: r.monoInfo.freq,
+        cents: 1200 * Math.log(r.monoInfo.freq / midiToFreq(m)) / Math.LN2,
+        last: performance.now()
+      };
+    }
+  }
+
+  /* Mehrsaitenauswertung nur, wenn kein eindeutiger Einzelton vorliegt.
+     Sonst würden dessen Obertöne als eigene Saiten auftauchen. */
+  if (forced < 0 && !r.isMono) {
+    for (var i = 0; i < r.strings.length; i++) {
+      var s = r.strings[i];
+      if (!s.present) continue;
+      updateString(i, s.cents, s.freq, s.conf, s.blended);
+    }
+    var best = -1;
+    for (var j = 0; j < r.strings.length; j++) {
+      if (!r.strings[j].present) continue;
+      if (best < 0 || Math.abs(r.strings[j].cents) > Math.abs(r.strings[best].cents)) best = j;
+    }
+    if (best >= 0) { ST.focus = best; ST.chrom = null; }
+  }
+
+  render();
+  if (S.showSpectrum) drawSpectrum(r.spec);
+}
+
+/* -------------------------------------------------------- Akkordmodus */
+function analyzeChord(sr, opts) {
+  var spec = DSP.spectrum(tdBuf, sr, { pad: 2, window: S.window });
+  var notes = DSP.detectNotes(spec, { a4: S.a4, maxNotes: 5, harmonics: S.harmonics + 2 });
+  if (!notes.length) return;
+  var ch = DSP.notesToChroma(notes, spec, { a4: S.a4 });
+  var bass = DSP.bassOf(notes);
+  var res = DSP.identifyChord(ch, bass, {});
+  ST.chordNotes = notes.slice().sort(function (a, b) { return a.midi - b.midi; });
+  if (res) {
+    var changed = !ST.chord || ST.chord.name !== res.name;
+    ST.chord = res;
+    if (changed) ST.chordShapes = findShapes(res);
+  }
+  renderChord();
+  if (S.showSpectrum) drawSpectrum(spec);
+}
+
+function findShapes(res) {
+  var tun = targetMidis();
+  if (tun.length < 4) return [];
+  try {
+    var sh = DSP.generateShapes(res.root, res.quality.iv, tun,
+      { limit: 3, optional: res.quality.opt, allowInversions: false, maxFret: 12 });
+    if (!sh.length) {
+      sh = DSP.generateShapes(res.root, res.quality.iv, tun,
+        { limit: 3, optional: res.quality.opt, allowInversions: true, maxFret: 12, minStrings: 3 });
+    }
+    return sh;
+  } catch (e) { return []; }
+}
+
+function renderChord() {
+  var nameEl = $('#chName'), subEl = $('#chSub');
+  if (!ST.chord) { nameEl.textContent = '—'; subEl.textContent = T('chord.prompt'); return; }
+  var c = ST.chord;
+  nameEl.textContent = c.name;
+  nameEl.style.color = '#F0E9DE';
+  var tones = c.tones.map(function (pc) { return pcName(pc); }).join(' · ');
+  subEl.textContent = tones + (c.bass !== c.root && c.bass >= 0 ? '  ·  ' + T('chord.bass') + ' ' + pcName(c.bass) : '');
+
+  var box = $('#chDiagrams');
+  box.innerHTML = '';
+  (ST.chordShapes || []).forEach(function (sh, i) {
+    box.appendChild(diagramFigure(sh.frets, i === 0 ? T('chord.likely') : T('chord.alt')));
+  });
+
+  var nb = $('#chNotes');
+  nb.innerHTML = '';
+  ST.chordNotes.forEach(function (n) {
+    var chip = h('span', 'chip');
+    var ct = n.cents;
+    chip.innerHTML = '<b>' + midiName(n.midi) + midiOct(n.midi) + '</b> ' +
+      (ct > 0 ? '+' : '') + ct.toFixed(0) + '¢';
+    nb.appendChild(chip);
+  });
+}
+
+function diagramFigure(frets, caption) {
+  var fig = document.createElement('figure');
+  fig.className = 'diagram';
+  fig.appendChild(chordDiagram(frets));
+  var cap = document.createElement('figcaption');
+  cap.textContent = caption;
+  fig.appendChild(cap);
+  return fig;
+}
+
+function chordDiagram(frets) {
+  var n = frets.length;
+  var pos = frets.filter(function (f) { return f > 0; });
+  var minF = pos.length ? Math.min.apply(null, pos) : 1;
+  var maxF = pos.length ? Math.max.apply(null, pos) : 1;
+  var base = (maxF <= 4) ? 1 : minF;
+  var W = 100, H = 128, left = 14, right = 86, top = 26, rows = 4;
+  var colW = (right - left) / (n - 1), rowH = (H - top - 12) / rows;
+  var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H });
+
+  el('rect', { x: left, y: top, width: right - left, height: rowH * rows, fill: 'rgba(58,33,20,.35)', rx: 2 }, svg);
+  if (base === 1) {
+    el('rect', { x: left - 1, y: top - 3.5, width: right - left + 2, height: 4, fill: '#E8DFC8', rx: 1.5 }, svg);
+  } else {
+    var t = el('text', { x: left - 6, y: top + rowH * 0.7, fill: '#9C9184', 'font-size': '9', 'text-anchor': 'end' }, svg);
+    t.textContent = base;
+  }
+  for (var r = 0; r <= rows; r++) {
+    el('line', { x1: left, y1: top + r * rowH, x2: right, y2: top + r * rowH, stroke: 'rgba(200,190,175,.35)', 'stroke-width': .9 }, svg);
+  }
+  for (var i = 0; i < n; i++) {
+    var x = left + i * colW;
+    el('line', { x1: x, y1: top, x2: x, y2: top + rows * rowH, stroke: 'rgba(220,225,235,.55)', 'stroke-width': .9 }, svg);
+    var f = frets[i];
+    if (f < 0) {
+      el('path', {
+        d: 'M ' + (x - 3) + ',' + (top - 9) + ' l 6,6 M ' + (x + 3) + ',' + (top - 9) + ' l -6,6',
+        stroke: '#6B6155', 'stroke-width': 1.4, 'stroke-linecap': 'round'
+      }, svg);
+    } else if (f === 0) {
+      el('circle', { cx: x, cy: top - 6, r: 3, fill: 'none', stroke: '#9C9184', 'stroke-width': 1.2 }, svg);
+    } else {
+      var row = f - base;
+      if (row >= 0 && row < rows) {
+        el('circle', { cx: x, cy: top + row * rowH + rowH / 2, r: 5.4, fill: '#C9A227' }, svg);
+      }
+    }
+  }
+  return svg;
+}
+
+/* ------------------------------------------------------------ Spektrum */
+function drawSpectrum(spec) {
+  var cv = $('#spectrum');
+  if (!spec || cv.hidden) return;
+  var ctx = cv.getContext('2d');
+  var W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  var fLo = 60, fHi = 2200;
+  var grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#C9A227'); grad.addColorStop(1, '#43C98B');
+  ctx.fillStyle = grad;
+  var max = 0, k;
+  for (k = 0; k < spec.mag.length; k++) if (spec.mag[k] > max) max = spec.mag[k];
+  if (max <= 0) return;
+  for (var x = 0; x < W; x++) {
+    var f = fLo * Math.pow(fHi / fLo, x / W);
+    var v = DSP.magAt(spec, f) / max;
+    var db = 20 * Math.log(v + 1e-6) / Math.LN10;
+    var y = clamp((db + 70) / 70, 0, 1);
+    ctx.fillRect(x, H - y * H, 1, y * H);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1;
+  targetFreqs().forEach(function (f) {
+    var x = Math.log(f / fLo) / Math.log(fHi / fLo) * W;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  });
+}
+
+/* ======================================================= Menüs (Sheet) == */
+function sheetOpen(title, build) {
+  $('#sheetTitle').textContent = title;
+  var body = $('#sheetBody');
+  body.innerHTML = '';
+  build(body);
+  $('#sheet').classList.add('open');
+  $('#scrim').classList.add('open');
+}
+function sheetClose() {
+  $('#sheet').classList.remove('open');
+  $('#scrim').classList.remove('open');
+}
+
+function group(parent, title) {
+  var g = h('div', 'group');
+  if (title) g.appendChild(h('h3', null, title));
+  parent.appendChild(g);
+  return g;
+}
+function labelFor(text, sub) {
+  var l = document.createElement('label');
+  l.appendChild(document.createTextNode(text));
+  if (sub) { var s = document.createElement('small'); s.textContent = sub; l.appendChild(s); }
+  return l;
+}
+function fRange(g, text, sub, min, max, step, get, set, fmt) {
+  var f = h('div', 'field');
+  f.appendChild(labelFor(text, sub));
+  var inp = document.createElement('input');
+  inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = get();
+  var val = h('span', 'val', fmt(get()));
+  inp.addEventListener('input', function () {
+    var v = parseFloat(inp.value);
+    set(v); val.textContent = fmt(v); saveSettings();
+  });
+  f.appendChild(inp); f.appendChild(val);
+  g.appendChild(f);
+  return f;
+}
+function fSelect(g, text, sub, options, get, set) {
+  var f = h('div', 'field');
+  f.appendChild(labelFor(text, sub));
+  var sel = document.createElement('select');
+  options.forEach(function (o) {
+    var op = document.createElement('option');
+    op.value = o[0]; op.textContent = o[1];
+    if (String(o[0]) === String(get())) op.selected = true;
+    sel.appendChild(op);
+  });
+  sel.addEventListener('change', function () { set(sel.value); saveSettings(); });
+  f.appendChild(sel); g.appendChild(f);
+  return sel;
+}
+function fSwitch(g, text, sub, get, set) {
+  var f = h('div', 'field');
+  f.appendChild(labelFor(text, sub));
+  var sw = h('button', 'switch');
+  sw.setAttribute('role', 'switch');
+  sw.setAttribute('aria-checked', get() ? 'true' : 'false');
+  sw.setAttribute('aria-label', text);
+  sw.addEventListener('click', function () {
+    var v = !(sw.getAttribute('aria-checked') === 'true');
+    sw.setAttribute('aria-checked', v ? 'true' : 'false');
+    set(v); saveSettings();
+  });
+  f.appendChild(sw); g.appendChild(f);
+}
+
+/* ----------------------------------------------------- Stimmungsauswahl */
+function openTuningSheet() {
+  sheetOpen(T('sheet.tuning'), function (body) {
+    var g0 = group(body);
+    var seg = h('div', 'seg');
+    Object.keys(INSTRUMENTS).forEach(function (key) {
+      var b = h('button', S.instrument === key ? 'on' : '', T(INSTRUMENTS[key].key));
+      b.addEventListener('click', function () {
+        S.instrument = key;
+        S.tuning = TUNINGS[key][0].id;
+        saveSettings(); rebuildInstrument(); openTuningSheet();
+      });
+      seg.appendChild(b);
+    });
+    g0.appendChild(seg);
+
+    var g1 = group(body, T('tun.tunings'));
+    TUNINGS[S.instrument].forEach(function (t) {
+      var b = h('button', 'list-btn' + (t.id === S.tuning ? ' on' : ''));
+      b.appendChild(h('b', null, tuningName(t)));
+      b.appendChild(h('span', null, t.midi.map(function (m) {
+        return pcName(m % 12) + (Math.floor(m / 12) - 1);
+      }).join(' ')));
+      b.addEventListener('click', function () {
+        S.tuning = t.id; saveSettings(); rebuildInstrument(); openTuningSheet();
+      });
+      g1.appendChild(b);
+    });
+
+    var g2 = group(body, T('tun.transposition'));
+    fRange(g2, T('tun.capo'), T('tun.capoSub'), -12, 12, 1,
+      function () { return S.transpose; },
+      function (v) { S.transpose = v; rebuildInstrument(); },
+      function (v) { return (v > 0 ? '+' : '') + v + ' ' + T('unit.st'); });
+    fRange(g2, T('tun.a4'), T('tun.a4sub'), 415, 466, 0.5,
+      function () { return S.a4; },
+      function (v) { S.a4 = v; rebuildInstrument(); },
+      function (v) { return v.toFixed(1) + ' Hz'; });
+  });
+}
+
+/* ------------------------------------------------------- Einstellungen */
+function openSettingsSheet() {
+  sheetOpen(T('sheet.settings'), function (body) {
+    var g1 = group(body, T('set.g1'));
+    fSelect(g1, T('set.language'), T('set.languageSub'),
+      [['en', 'English'], ['de', 'Deutsch']],
+      function () { return S.lang; },
+      function (v) {
+        S.lang = v; saveSettings();
+        applyStaticTexts(); rebuildInstrument(); openSettingsSheet();
+      });
+    fRange(g1, T('tun.a4'), T('tun.a4std'), 415, 466, 0.5,
+      function () { return S.a4; }, function (v) { S.a4 = v; rebuildInstrument(); },
+      function (v) { return v.toFixed(1) + ' Hz'; });
+    fRange(g1, T('set.tolerance'), T('set.toleranceSub'), 1, 15, 1,
+      function () { return S.tolerance; },
+      function (v) { S.tolerance = v; buildGauge(); buildRows(); render(); },
+      function (v) { return '±' + v + ' ¢'; });
+    fSelect(g1, T('set.notation'), T('set.notationSub'),
+      [['intl', T('set.notIntl')], ['de', T('set.notDe')]],
+      function () { return S.notation; },
+      function (v) { S.notation = v; updateHeadstockLabels(); buildRows(); render(); });
+    fSwitch(g1, T('set.lefty'), T('set.leftySub'),
+      function () { return S.lefty; },
+      function (v) { S.lefty = v; $('#stage').classList.toggle('lefty', v); });
+    fRange(g1, T('set.smooth'), T('set.smoothSub'), 0, 0.9, 0.05,
+      function () { return S.smooth; }, function (v) { S.smooth = v; },
+      function (v) { return Math.round(v * 100) + '%'; });
+    fRange(g1, T('set.hold'), T('set.holdSub'), 300, 4000, 100,
+      function () { return S.holdMs; }, function (v) { S.holdMs = v; },
+      function (v) { return (v / 1000).toFixed(1) + ' s'; });
+
+    var g2 = group(body, T('set.g2'));
+    fSelect(g2, T('set.fft'), T('set.fftSub'),
+      [[4096, T('set.fft1')], [8192, T('set.fft2')],
+       [16384, T('set.fft3')], [32768, T('set.fft4')]],
+      function () { return S.fftSize; },
+      function (v) { S.fftSize = parseInt(v, 10); rewire(); });
+    fSelect(g2, T('set.win'), T('set.winSub'),
+      [['hann', 'Hann'], ['blackman-harris', 'Blackman-Harris'], ['hamming', 'Hamming'], ['gauss', 'Gauß']],
+      function () { return S.window; }, function (v) { S.window = v; });
+    fRange(g2, T('set.rate'), T('set.rateSub'), 5, 25, 1,
+      function () { return S.rate; }, function (v) { S.rate = v; },
+      function (v) { return v + '/s'; });
+    fRange(g2, T('set.capture'), T('set.captureSub'), 80, 350, 10,
+      function () { return S.captureCents; }, function (v) { S.captureCents = v; },
+      function (v) { return '±' + v + ' ¢'; });
+    fRange(g2, T('set.harm'), T('set.harmSub'), 3, 10, 1,
+      function () { return S.harmonics; }, function (v) { S.harmonics = v; },
+      function (v) { return String(v); });
+    fRange(g2, T('set.tolC'), T('set.tolCSub'), 6, 30, 1,
+      function () { return S.tolCents; }, function (v) { S.tolCents = v; },
+      function (v) { return '±' + v + ' ¢'; });
+    fSelect(g2, T('set.reject'), T('set.rejectSub'),
+      [[0, T('set.rej0')], [1.0, T('set.rej1')], [1.25, T('set.rej2')],
+       [1.6, T('set.rej3')], [2.2, T('set.rej4')]],
+      function () { return S.harmReject; }, function (v) { S.harmReject = parseFloat(v); });
+    fSwitch(g2, T('set.inharm'), T('set.inharmSub'),
+      function () { return S.inharmonic; }, function (v) { S.inharmonic = v; });
+    fRange(g2, T('set.mono'), T('set.monoSub'), 0.7, 0.98, 0.01,
+      function () { return S.monoClarity; }, function (v) { S.monoClarity = v; },
+      function (v) { return v.toFixed(2); });
+    fRange(g2, T('set.gate'), T('set.gateSub'), 0.0004, 0.012, 0.0002,
+      function () { return S.absFloor; }, function (v) { S.absFloor = v; },
+      function (v) { return (20 * Math.log(v) / Math.LN10).toFixed(0) + ' dB'; });
+    fRange(g2, T('set.snr'), T('set.snrSub'), 2, 12, 0.5,
+      function () { return S.snrMin; }, function (v) { S.snrMin = v; },
+      function (v) { return v.toFixed(1) + '×'; });
+    fRange(g2, T('set.rel'), T('set.relSub'), 0.03, 0.4, 0.01,
+      function () { return S.relThresh; }, function (v) { S.relThresh = v; },
+      function (v) { return Math.round(v * 100) + '%'; });
+
+    var g3 = group(body, T('set.g3'));
+    fSwitch(g3, T('set.haptics'), null,
+      function () { return S.haptics; }, function (v) { S.haptics = v; });
+    fSwitch(g3, T('set.chime'), T('set.chimeSub'),
+      function () { return S.chime; }, function (v) { S.chime = v; });
+    fRange(g3, T('set.ref'), T('set.refSub'), 0, 0.8, 0.05,
+      function () { return S.refVol; }, function (v) { S.refVol = v; },
+      function (v) { return Math.round(v * 125) + '%'; });
+    fSwitch(g3, T('set.spec'), T('set.specSub'),
+      function () { return S.showSpectrum; },
+      function (v) { S.showSpectrum = v; $('#spectrum').hidden = !v; });
+
+    var g4 = group(body, T('set.g4'));
+    fSwitch(g4, T('set.raw'), T('set.rawSub'),
+      function () { return S.rawInput; },
+      function (v) { S.rawInput = v; if (micStream) { stopMic(); startMic(); } });
+    if (ST.devices && ST.devices.length > 1) {
+      fSelect(g4, T('set.mic'), null,
+        [['', T('set.micDefault')]].concat(ST.devices.map(function (d, i) {
+          return [d.deviceId, d.label || ('Input ' + (i + 1))];
+        })),
+        function () { return S.deviceId; },
+        function (v) { S.deviceId = v; if (micStream) { stopMic(); startMic(); } });
+    }
+
+    var g5 = group(body);
+    var reset = h('button', 'action', T('set.reset'));
+    reset.addEventListener('click', function () {
+      for (var k in DEFAULTS) S[k] = DEFAULTS[k];
+      saveSettings(); applyStaticTexts(); rebuildInstrument(); buildGauge();
+      $('#stage').classList.toggle('lefty', S.lefty);
+      $('#spectrum').hidden = !S.showSpectrum;
+      openSettingsSheet();
+    });
+    g5.appendChild(reset);
+    var info = h('div', 'note-box', T('set.privacy'));
+    g5.appendChild(info);
+
+    var g6 = group(body, T('set.about'));
+    var about = h('div', 'note-box');
+    about.innerHTML =
+      '<b>Tonalis</b> · ' + T('about.version') + ' ' + VERSION + '<br>' +
+      T('about.author') + ': ' + AUTHOR +
+      ' &lt;<a href="mailto:' + AUTHOR_MAIL + '" style="color:#C9A227">' + AUTHOR_MAIL + '</a>&gt;<br>' +
+      T('about.license') + ': ' + LICENSE + '<br><br>' + T('about.licenseNote');
+    g6.appendChild(about);
+  });
+}
+
+/* ------------------------------------------------------------ Werkzeuge */
+var metro = { on: false, bpm: 96, beats: 4, idx: 0, next: 0, timer: 0, dots: null };
+function metroClick(t, accent) {
+  var ctx = ensureCtx();
+  var o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'square';
+  o.frequency.value = accent ? 1600 : 1050;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(accent ? 0.22 : 0.13, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.055);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(t); o.stop(t + 0.07);
+}
+function metroTick() {
+  var ctx = ensureCtx();
+  while (metro.next < ctx.currentTime + 0.15) {
+    var beat = metro.idx % metro.beats;
+    metroClick(metro.next, beat === 0);
+    (function (b, when) {
+      var delay = Math.max(0, (when - ctx.currentTime) * 1000);
+      setTimeout(function () {
+        if (!metro.dots) return;
+        for (var i = 0; i < metro.dots.length; i++) metro.dots[i].className = '';
+        if (metro.dots[b]) metro.dots[b].className = 'hit' + (b === 0 ? ' one' : '');
+      }, delay);
+    })(beat, metro.next);
+    metro.next += 60 / metro.bpm;
+    metro.idx++;
+  }
+}
+function metroStart() {
+  ensureCtx();
+  metro.on = true; metro.idx = 0; metro.next = AC.currentTime + 0.12;
+  metro.timer = setInterval(metroTick, 25);
+}
+function metroStop() {
+  metro.on = false;
+  clearInterval(metro.timer); metro.timer = 0;
+  if (metro.dots) for (var i = 0; i < metro.dots.length; i++) metro.dots[i].className = '';
+}
+
+function openToolsSheet() {
+  sheetOpen(T('sheet.tools'), function (body) {
+    var g1 = group(body, T('tools.demo'));
+    g1.appendChild(h('div', 'note-box', T('tools.demoNote')));
+    var seg = h('div', 'seg');
+    seg.style.marginTop = '10px';
+    [['strum', T('tools.strum')], ['single', T('tools.seq')], ['off', T('tools.off')]].forEach(function (o) {
+      var b = h('button', '', o[1]);
+      b.addEventListener('click', function () {
+        if (o[0] === 'off') stopDemo(); else startDemo(o[0]);
+        var bs = seg.querySelectorAll('button');
+        for (var i = 0; i < bs.length; i++) bs[i].classList.remove('on');
+        if (o[0] !== 'off') b.classList.add('on');
+      });
+      if (demoNode && o[0] !== 'off') b.classList.add('on');
+      seg.appendChild(b);
+    });
+    g1.appendChild(seg);
+
+    var g2 = group(body, T('tools.metro'));
+    var big = h('div', 'big-num', metro.bpm + ' bpm');
+    g2.appendChild(big);
+    var dots = h('div', 'metro-beat');
+    metro.dots = [];
+    for (var i = 0; i < metro.beats; i++) { var d = document.createElement('i'); dots.appendChild(d); metro.dots.push(d); }
+    g2.appendChild(dots);
+    fRange(g2, T('tools.tempo'), null, 40, 240, 1,
+      function () { return metro.bpm; },
+      function (v) { metro.bpm = v; big.textContent = v + ' bpm'; },
+      function (v) { return v + ' bpm'; });
+    fSelect(g2, T('tools.meter'), null,
+      [[2, '2/4'], [3, '3/4'], [4, '4/4'], [6, '6/8'], [1, T('tools.meterNone')]],
+      function () { return metro.beats; },
+      function (v) {
+        metro.beats = parseInt(v, 10);
+        dots.innerHTML = ''; metro.dots = [];
+        for (var j = 0; j < metro.beats; j++) { var e2 = document.createElement('i'); dots.appendChild(e2); metro.dots.push(e2); }
+      });
+    var mb = h('button', 'action', metro.on ? T('tools.stop') : T('tools.start'));
+    mb.addEventListener('click', function () {
+      if (metro.on) { metroStop(); mb.textContent = T('tools.start'); }
+      else { metroStart(); mb.textContent = T('tools.stop'); }
+    });
+    g2.appendChild(mb);
+    var taps = [];
+    var tap = h('button', 'action', T('tools.tap'));
+    tap.addEventListener('click', function () {
+      var now = performance.now();
+      taps = taps.filter(function (t) { return now - t < 2500; });
+      taps.push(now);
+      if (taps.length >= 2) {
+        var sum = 0;
+        for (var k = 1; k < taps.length; k++) sum += taps[k] - taps[k - 1];
+        var bpm = Math.round(60000 / (sum / (taps.length - 1)));
+        metro.bpm = clamp(bpm, 40, 240);
+        big.textContent = metro.bpm + ' bpm';
+      }
+    });
+    g2.appendChild(tap);
+
+    var g3 = group(body, T('tools.chords'));
+    var lib = h('button', 'action', T('tools.lib'));
+    lib.addEventListener('click', function () { openLibrarySheet(0); });
+    g3.appendChild(lib);
+  });
+}
+
+/* -------------------------------------------------- Akkordbibliothek */
+function openLibrarySheet(rootPc) {
+  sheetOpen(T('sheet.library'), function (body) {
+    var seg = h('div', 'seg');
+    for (var pc = 0; pc < 12; pc++) {
+      (function (p) {
+        var b = h('button', p === rootPc ? 'on' : '', pcName(p));
+        b.addEventListener('click', function () { openLibrarySheet(p); });
+        seg.appendChild(b);
+      })(pc);
+    }
+    body.appendChild(seg);
+
+    var info = h('p', 'hint', T('lib.info') + tuningName(currentTuning()));
+    info.style.textAlign = 'left';
+    body.appendChild(info);
+
+    var grid = h('div', 'lib-grid');
+    body.appendChild(grid);
+
+    var tun = targetMidis();
+    var qs = DSP.QUALITIES;
+    var idx = 0;
+    (function step() {
+      var end = Math.min(qs.length, idx + 4);
+      for (; idx < end; idx++) {
+        var q = qs[idx];
+        var sh = DSP.generateShapes(rootPc, q.iv, tun,
+          { limit: 1, optional: q.opt, allowInversions: false, maxFret: 12 });
+        if (!sh.length) sh = DSP.generateShapes(rootPc, q.iv, tun,
+          { limit: 1, optional: q.opt, allowInversions: true, maxFret: 12, minStrings: 3 });
+        if (!sh.length) continue;
+        var frets = sh[0].frets;
+        var fig = diagramFigure(frets, pcName(rootPc) + q.name);
+        (function (fr) {
+          fig.addEventListener('click', function () {
+            var k = 0;
+            fr.forEach(function (f, i) {
+              if (f < 0) return;
+              setTimeout(function () { playReference(midiToFreq(tun[i] + f)); }, k * 55);
+              k++;
+            });
+          });
+        })(frets);
+        fig.style.cursor = 'pointer';
+        grid.appendChild(fig);
+      }
+      if (idx < qs.length) setTimeout(step, 0);
+    })();
+  });
+}
+
+/* ============================================================== Aufbau == */
+function rebuildInstrument() {
+  buildHeadstock();
+  buildRows();
+  resetStrings();
+  $('#tuningName').textContent = tuningName(currentTuning());
+  $('#instName').textContent = T(INSTRUMENTS[S.instrument].key) + ' · ' +
+    targetFreqs().length + ' ' + T('unit.strings') +
+    (S.transpose ? ' · ' + (S.transpose > 0 ? '+' : '') + S.transpose + ' ' + T('unit.st') : '') +
+    (S.a4 !== 440 ? ' · A=' + S.a4 : '');
+  if (demoNode) startDemo('strum');
+  render();
+  saveSettings();
+}
+function rewire() {
+  if (micStream && srcNode) {
+    try { srcNode.disconnect(); } catch (e) {}
+    analyser = makeAnalyser();
+    srcNode.connect(analyser);
+    setStatus(T('st.listening', { sr: AC.sampleRate, n: fftSizeSafe(),
+      ms: (fftSizeSafe() / AC.sampleRate * 1000).toFixed(0) }));
+  } else if (demoNode) {
+    startDemo('strum');
+  }
+  saveSettings();
+}
+
+function setMode(m) {
+  ST.mode = m; S.mode = m; saveSettings();
+  var tabs = $('#modes').querySelectorAll('button');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].setAttribute('aria-selected', tabs[i].dataset.mode === m ? 'true' : 'false');
+  }
+  var chord = (m === 'chord');
+  $('#chordview').hidden = !chord;
+  $('#readout').hidden = chord;
+  $('#strings').hidden = chord;
+  $('#hint').hidden = chord;
+  $('#stage').hidden = chord;
+  if (chord && !ST.chord) renderChord();
+  if (m !== 'single') ST.selected = -1;
+  render();
+}
+
+/* Texte des statischen Markups setzen (sprachabhängig) */
+function applyStaticTexts() {
+  document.title = T('app.title');
+  if (document.documentElement) document.documentElement.lang = S.lang;
+  var map = {
+    btnTools: 'ui.tools', btnTuning: 'ui.tuningSel',
+    btnSettings: 'ui.settings', sheetClose: 'ui.close'
+  };
+  for (var id in map) {
+    var n = $('#' + id);
+    if (n) n.setAttribute('aria-label', T(map[id]));
+  }
+  var hs = $('#hs'); if (hs) hs.setAttribute('aria-label', T('ui.headstock'));
+  var tabs = $('#modes').querySelectorAll('button');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].textContent = T('mode.' + tabs[i].dataset.mode);
+  }
+  $('#micLabel').textContent = micStream ? T('foot.micRunning') : T('foot.micStart');
+  if (!ST.running) {
+    $('#status').textContent = T('foot.ready');
+    $('#rdSub').textContent = T('rd.idle');
+  }
+  if (!ST.chord) { $('#chSub').textContent = T('chord.prompt'); }
+  var st = $('#sheetTitle');
+  if (st && !$('#sheet').classList.contains('open')) st.textContent = T('sheet.settings');
+}
+
+function init() {
+  applyStaticTexts();
+  $('#stage').classList.toggle('lefty', S.lefty);
+  $('#spectrum').hidden = !S.showSpectrum;
+  buildGauge();
+  rebuildInstrument();
+  setMode(S.mode || 'auto');
+
+  $('#btnMic').addEventListener('click', function () {
+    if (micStream) stopMic(); else startMic();
+  });
+  $('#btnSettings').addEventListener('click', openSettingsSheet);
+  $('#btnTools').addEventListener('click', openToolsSheet);
+  $('#btnTuning').addEventListener('click', openTuningSheet);
+  $('#sheetClose').addEventListener('click', sheetClose);
+  $('#scrim').addEventListener('click', sheetClose);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') sheetClose(); });
+
+  var tabs = $('#modes').querySelectorAll('button');
+  for (var i = 0; i < tabs.length; i++) {
+    (function (b) {
+      b.addEventListener('click', function () { setMode(b.dataset.mode); });
+    })(tabs[i]);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stopLoop();
+    else if (ST.running) startLoop();
+  });
+
+  if (!window.isSecureContext && location.protocol === 'file:') {
+    setStatus(T('st.file'));
+  }
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+
+})();
+
+</script>
+</body>
+</html>
