@@ -1,5 +1,7 @@
 # Tonalis
 
+https://dnertl.github.io/tonalis/tonalis-tuner.html
+
 A polyphonic tuner and chord recogniser for guitar and bass. One HTML file, no build step, no dependencies, no network access. Open it in a browser and it works.
 
 Strum all six strings at once and each one is measured separately. Play a single string and it switches to single-string mode on its own. Play a chord and it tells you which chord you played, with fingering diagrams.
